@@ -1,0 +1,28 @@
+
+Clock(s)        <= *tau*.((| "build" |) | ClockCollect<s>) ;
+ClockCollect(s) <= *tau*.((| "collect(s)" |) | ClockCollect<s>) ;
+
+Sink(n, sinkChan) <=
+    '"init(n)"!<0,sinkChan>.
+    ! "data(sinkChan)"(m,d)
+;
+
+Node(id, data, nodeChan, clockS) <=
+    "init(id)"?(level,parentCh) .
+    '"init(id)"!<"level + 1", nodeChan>.
+    Listen<id, nodeChan, data, level, parentCh, clockS>
+;
+
+Listen(id, nodeChan, data, level, parentCh, clockS) <=
+    case T : 
+        "data(nodeChan)"(i, d, s). Listen<id, nodeChan, "data@d", level, parentCh>
+      [] "collect(clockS, MAX - level)" : '"data(parentCh)"<id, data>
+;
+
+System3() <= (new d1, d2, channel1, channel2, sinkChan, clockS) (
+    Clock<clockS>                 | 
+    Sink<0, sinkChan>             | 
+    Node<1, d1, channel1, clockS> | 
+    Node<2, d2, channel2, clockS>
+) ;
+

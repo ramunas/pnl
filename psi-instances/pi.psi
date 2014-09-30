@@ -1,0 +1,13 @@
+
+X(x) <= !(x(w). (new "result to pass")'w<"result to pass">)
+
+-- [| (\x.x)N |]u
+ID(u) <= (new v)(v(x).v(w).'x<w> 
+                | (new x)'v<x>.'v<u>. X<x> (* [|x := N|] *) )
+
+-- simulation result should be ~ to X<x>
+-- that is [| N |]u
+
+-- checking (weak) bisimilarity of the following takes a bit of time,
+-- the table size is ~ 3000 entries
+-- (new b,bb)('b<b> |'bb<bb> | b(x).bb(x).'u<z>.(new b)('b<b> | b(x))) ~ (new a)('a<z> | a(z).'y<r>);
