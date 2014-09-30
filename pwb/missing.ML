@@ -151,6 +151,7 @@ sig
   val filter       : ('a -> bool) -> 'a list -> 'a list
   val sngl         : 'a -> 'a list
   val zip          : 'a list -> 'b list -> ('a * 'b) list
+  val unzip        : ('a * 'b) list -> ('a list) * ('b list)
   val zipwith      : ('a * 'b -> 'c) -> 'a list -> 'b list -> 'c list
   val intersperse  : 'a -> 'a list -> 'a list
   val enum         : int -> int -> int list
@@ -201,6 +202,7 @@ end = struct
   fun sngl a = [a]
 
   fun zip a b = ListPair.zip (a,b)
+  fun unzip a = ListPair.unzip a
 
   fun zipwith f a b = List.map f $ zip a b
 

@@ -17,8 +17,8 @@ sig
   sharing Term.AtomSort = Cond.AtomSort = Assr.AtomSort = Sort
   sharing Term.DataSort = Sort
 
-  val canRecv : Sort.sort -> Sort.sort -> bool
-  val canSend : Sort.sort -> Sort.sort -> bool
+  val canRecv : Sort.sort -> Sort.sort list -> bool
+  val canSend : Sort.sort -> Sort.sort list -> bool
   val canSubs : Sort.sort -> Sort.sort -> bool
   val canRstr : Sort.sort -> bool
 
@@ -53,10 +53,6 @@ signature PSI =
 sig
   structure Inst: PSI_INSTANCE
 
-  (* TODO: reimplement this using views                     *)
-  (* Something along the lines of                           *)
-  (* http://hackage.haskell.org/trac/ghc/wiki/ViewPatterns  *)
-
   datatype psi
     = Nil
     | Tau         of psi
@@ -87,6 +83,8 @@ sig
   val isSubstSeqWellformed : (Inst.name * Inst.term) list ->
                 ((string * (Inst.name * Inst.term)) list,
                   string) Either.either
+
+  val isWellSorted : (string * Inst.name list * psi) list -> psi -> bool
 end;
 
 
@@ -491,6 +489,31 @@ struct
         Invocation (k, map (substT s) mvec)
 
   fun subst agent sigma = subst' sigma agent
+
+
+  val nameSort = Inst.Term.atomSort
+  val sortT = Inst.Term.dataSort
+  val sortC = Inst.Cond.dataSort
+  val sortA = Inst.Assr.dataSort
+
+  fun isWellSorted' env v Nil = true
+    | isWellSorted' env v (Tau p) = isWellSorted' env v p
+    | isWellSorted' env v (Output (m, nvec, p)) = Inst.canSend (sortT m) (map sortT nvec) andalso isWellSorted' env v p
+    | isWellSorted' env v (BrOutput (m, nvec, p)) = Inst.canSend (sortT m) (map sortT nvec) andalso isWellSorted' env v p
+    | isWellSorted' env v (Input (m, avec, nvec, p)) = Inst.canRecv (sortT m) (map sortT nvec) andalso isWellSorted' env v p
+    | isWellSorted' env v (BrInput (m, avec, nvec, p)) = Inst.canRecv (sortT m) (map sortT nvec) andalso isWellSorted' env v p
+    | isWellSorted' env v (Case cls) = cls |> Lst.all (fn (cond, q) => isWellSorted' env v q)
+    | isWellSorted' env v (Parallel (p,q)) = isWellSorted' env v p andalso isWellSorted' env v q
+    | isWellSorted' env v (Restriction (a,p)) = Inst.canRstr (nameSort a) andalso isWellSorted' env v p
+    | isWellSorted' env v (Replication p) = isWellSorted' env v p
+    | isWellSorted' env v (Invocation (name, args)) =
+        Lst.all (fn (n, params, p) => (Lst.all (fn (x,m) => Inst.canSubs (nameSort x) (sortT m)) (Lst.zip params args))
+                                      andalso (Lst.any (fn (n',params',p') => n = n' andalso params = params' andalso eqData (p,p') ) v)
+                                        orelse isWellSorted' env ((n,params,p)::v) p)
+        (Lst.filter (fn (n, params, _) => name = n andalso length params = length args) env)
+    | isWellSorted' env v (Assertion psi) = true
+
+  fun isWellSorted env p = isWellSorted' env [] p
 
 
   local open Either open Tpl open Inst in
