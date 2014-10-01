@@ -419,7 +419,7 @@ struct
 
   val a = agent
   fun agent () = a () >>= (fn p => 
-    if Psi.isWellSorted [] p then return p else error "agent is not well sorted")
+    if Psi.isWellSorted [] p then return p else Err.error "agent is not well sorted")
 
 
   fun parseClause ctx =
