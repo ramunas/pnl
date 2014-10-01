@@ -40,12 +40,14 @@ sig
   val substA     : (name * term) list -> assertion -> assertion
 
 
+  (*
   val isWellFormedOutSubj : term -> (string, string) Either.either
   val isWellFormedInSubj  : term -> (string, string) Either.either
   val isWellFormedInvArg  : term list -> (string, string) Either.either
   val isWellFormedOutObj  : term list -> (string, string) Either.either
   val isWellFormedCond    : condition -> (string, string) Either.either
   val isWellFormedAssr    : assertion -> (string, string) Either.either
+  *)
 end;
 
 
@@ -79,7 +81,9 @@ sig
   (* Substitution function *)
   val subst : psi -> (Inst.name * Inst.term) list -> psi
 
+  (*
   val isWellformed : psi -> (string * psi, string) Either.either
+  *)
   val isSubstSeqWellformed : (Inst.name * Inst.term) list ->
                 ((string * (Inst.name * Inst.term)) list,
                   string) Either.either
@@ -516,6 +520,7 @@ struct
   fun isWellSorted env p = isWellSorted' env [] p
 
 
+    (*
   local open Either open Tpl open Inst in
   fun e >>= f = bindE e f
   fun e >> e' = e >>= (fn _ => e')
@@ -544,6 +549,7 @@ struct
     | isWellformed (p as (Invocation (_,ms))) =
         lf p $ isWellFormedInvArg ms
   end
+  *)
 
   fun isSubstSeqWellformed' [] err = err
     | isSubstSeqWellformed' ((a,m)::sigma) err =
