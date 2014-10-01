@@ -33,7 +33,7 @@ sig
   val brTransmit : term * term -> condition
   val compose    : assertion * assertion -> assertion
   val unit       : assertion
-  val entails    : assertion * condition -> bool
+  (* val entails    : assertion * condition -> bool *)
 
   val substT     : (name * term) list -> term      -> term
   val substC     : (name * term) list -> condition -> condition
