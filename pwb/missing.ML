@@ -298,13 +298,13 @@ end;
 
 structure Missing =
 struct
+  open Str
   open Fun
   open Opt
   open Tpl
   open Lst
   open Err
   open Either
-  open Str
 end;
 
 end; (* local open Fun in *)
