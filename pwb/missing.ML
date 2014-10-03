@@ -286,6 +286,16 @@ struct
 end;
 
 
+structure Str :
+sig
+  val join : string -> string list -> string
+end =
+struct
+  fun join x (a::b::xs) = a ^ x ^ join x (b::xs)
+    | join x (a::[]) = a
+    | join x ([]) = "" 
+end;
+
 structure Missing =
 struct
   open Fun
@@ -294,6 +304,7 @@ struct
   open Lst
   open Err
   open Either
+  open Str
 end;
 
 end; (* local open Fun in *)
