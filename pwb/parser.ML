@@ -69,6 +69,8 @@ sig
 
   val both : 'a parser -> 'b parser -> ('a * 'b) parser
 
+  val failmsg : string fail -> string
+
   (* TODO : *)
   (*val streamTrans : 'a parser -> 'a parser*)
 end;
@@ -84,6 +86,9 @@ struct
   structure Stream = S
 
   datatype 'a fail = Fail of 'a | Error of 'a
+
+  fun failmsg (Fail m) = m
+    | failmsg (Error m) = m
 
   datatype 'a parser = Parser of
      stream -> (string fail * stream, 'a * stream) either
