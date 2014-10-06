@@ -204,14 +204,11 @@ signature PSI_CLAUSE =
 sig
   structure Psi: PSI
 
-  datatype clause =
-    Clause of string * Psi.atom list * Psi.psi
-    (*string * Psi.Inst.name list * Psi.psi*)
+  datatype clause = Clause of string * Psi.atom list * Psi.psi
 
   include NOMINAL
     where type atom = Psi.atom
     where type data = clause
-
 end;
 
 

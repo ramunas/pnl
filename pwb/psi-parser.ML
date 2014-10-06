@@ -5,13 +5,18 @@
 
 signature PSI_PARSER =
 sig
-  structure Psi    : PSI
   structure Parser : PARSER
+  structure Psi    : PSI
+  structure Cl     : PSI_CLAUSE
+  sharing Cl.Psi = Psi
 
-  val agent : unit -> Psi.psi Parser.parser
-  val term  : Psi.Inst.term Parser.parser
-  val name  : Psi.Inst.name Parser.parser
-  val processConstant : unit -> string Parser.parser
+  val agent              : unit -> Psi.psi Parser.parser
+  val term               : Psi.Inst.term Parser.parser
+  val name               : Psi.Inst.name Parser.parser
+  val processConstant    : unit -> string Parser.parser
+  val processClause      : unit -> Cl.clause Parser.parser
+  val processClauses     : unit -> (Cl.clause list) Parser.parser
+  val onlyProcessClauses : unit -> (Cl.clause list) Parser.parser
 
   val t : string -> string Parser.parser
   val ws : char list Parser.parser
@@ -24,7 +29,7 @@ sig
   val parseTerm : string -> (string, Psi.Inst.term) Either.either
   val parseCond : string -> (string, Psi.Inst.condition) Either.either
   val parseAssr : string -> (string, Psi.Inst.assertion) Either.either
-  val var : (Psi.Inst.name -> Psi.Inst.term) option
+  val var       : (Psi.Inst.name -> Psi.Inst.term) option
 end;
 
 
@@ -123,6 +128,7 @@ struct
   structure Psi    = A.Req.Psi
   structure Parser = A.Parser
   structure B      = PsiLexerParserComb(Parser)
+  structure Cl     = PsiClause(Psi)
   open B
 local
   open Missing
@@ -278,6 +284,29 @@ in
             (filter (not o (flip member) l o fst) $ agentProds ())
 
   and agent () = restrictedAgent [] ()
+
+
+  fun processClause () =
+    processConstant () >>= (fn c =>
+    nofail (
+    stok "(" >>
+    (name </sepby/> (stok ",")) >>= (fn names =>
+    stok ")" >>
+    stok "<=" >> nofail (
+    agent () >>= (fn a =>
+    return (Cl.Clause (c,names,a))
+    )))))
+
+
+  fun processClauses () =
+    processClause () </sepby/> (stok ";")
+
+  fun onlyProcessClauses () =
+    processClauses () >>= (fn cls =>
+    nofail (
+    ws >> eof "" >>
+    return cls
+    ))
 
 end
 end;
