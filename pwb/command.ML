@@ -37,10 +37,16 @@ struct
   open Missing
   open A
 
-  structure Psi = SI.Psi
-  structure Cl = SI.ClEnv.Cl
+  structure Psi     = SI.Psi
+  structure Cl      = SI.ClEnv.Cl
   structure Guarded = PsiGuarded(SI)
-  structure PP = WPrettyPrinter
+  structure PP      = WPrettyPrinter
+
+  structure PsiParser = PsiParser(struct
+    structure Parser = Parser(ParserStreamIO)
+    structure Req    = PsiParserReq
+    structure Cl     = Cl
+  end)
   structure PsiPP = PrettyPrintPsi(struct
     structure PP     = PP
     structure Psi    = Psi
@@ -55,10 +61,6 @@ struct
     structure PP    = PP
     structure Cl    = Cl
     structure PPPsi = PsiPP
-  end)
-  structure PsiParser = PsiParser(struct
-    structure Parser = Parser(ParserStreamIO)
-    structure Req    = PsiParserReq
   end)
   structure PsiB = PsiLexerParserComb(PsiParser.Parser)
   structure Env  = SI.ClEnv

@@ -18,7 +18,7 @@ sig
   val processClauses     : unit -> (Cl.clause list) Parser.parser
   val onlyProcessClauses : unit -> (Cl.clause list) Parser.parser
 
-  val t : string -> string Parser.parser
+  val t  : string -> string Parser.parser
   val ws : char list Parser.parser
 end;
 
@@ -122,13 +122,15 @@ functor PsiParser
     sig
       structure Parser : PARSER
       structure Req    : PSI_PARSER_REQ
+      structure Cl : PSI_CLAUSE
+      sharing Req.Psi = Cl.Psi
     end) : PSI_PARSER
 =
 struct
   structure Psi    = A.Req.Psi
   structure Parser = A.Parser
   structure B      = PsiLexerParserComb(Parser)
-  structure Cl     = PsiClause(Psi)
+  structure Cl     = A.Cl
   open B
 local
   open Missing
