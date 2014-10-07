@@ -811,11 +811,36 @@ struct
     (fn _ => (return (setEof ctx)))
 
 
+  (*structure PsiParser = PsiParser(struct
+    structure Parser = Parser(ParserStreamIO)
+    structure Req    = PsiParserReq
+    structure Cl     = Cl
+  end)
+  *)
+  fun readC ctx =
+    stok "read" >> ws >>  PsiB.literal >>= (fn filename => 
+    tr () >>
+    MissingIO.withOpenFile filename (fn instream =>
+    case parse (PsiParser.onlyProcessClauses ()) (ParserStreamIO.make instream) of
+         Either.RIGHT (cls,_) => 
+         let
+           val env' = 
+             List.foldr (fn ((cl as Cl.Clause (a,_,_)),e) => Env.extend e a cl)
+                        (getEnv ctx) cls
+         in
+           return (updateEnv ctx (const env'))
+         end
+       | Either.LEFT (fail,s) => (output ctx (errormsg (fail,s)); return ctx)
+    ))
+
+
+
   val helpString =
     "help                      - prints this help message\n" ^
     "env                       - prints the current process environment\n" ^
     "drop <procname>           - removes clauses from the environment with <procname>\n" ^
     "input \"filename\"          - reads commands from a file filename\n" ^
+    "read \"filename\"          - reads clauses from a file \"filename\" and replaces the environment\n" ^
     "sstep <proc>              - enters the symbolic simulator for the process <proc>;\n" ^
     "                            enter a number to select an agent to follow, b to backtrack, and q to exit\n" ^
     "wsstep <proc>             - enters the weak symbolic simulator; accepts the same commands as sstep\n" ^
@@ -851,6 +876,7 @@ struct
     sstepC                         :: 
     wsstepC                        :: 
     agentC                         :: 
+    readC                          ::
     bisimC "~s" Bisim.Strong.bisim :: 
     bisimC "~w" Bisim.Weak.bisim   :: 
     bisimC "<s" Bisim.Strong.sim   :: 

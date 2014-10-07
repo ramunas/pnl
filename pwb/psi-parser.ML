@@ -296,19 +296,19 @@ in
     stok ")" >>
     stok "<=" >> nofail (
     agent () >>= (fn a =>
+    ws >> (stok ";") >>
     return (Cl.Clause (c,names,a))
     )))))
 
 
   fun processClauses () =
-    processClause () </sepby/> (stok ";")
+    many (processClause ())
 
   fun onlyProcessClauses () =
     processClauses () >>= (fn cls =>
-    nofail (
     ws >> eof "" >>
     return cls
-    ))
+    )
 
 end
 end;
