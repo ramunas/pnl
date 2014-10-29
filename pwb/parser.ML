@@ -63,6 +63,7 @@ sig
   val rightAssocOp  : 'a parser -> ('a * 'a -> 'a) parser -> 'a -> 'a parser
 
   val until : 'a parser -> char list parser
+  (* seems to be broken *)
   val notP : 'a parser -> 'b -> 'b parser
   val try : 'a parser -> 'a parser
   val nofail : 'a parser -> 'a parser

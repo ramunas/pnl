@@ -183,8 +183,17 @@ struct
 
   type spec = spec' list
 
-  (* Extend with parsing comments *)
-  fun ws () = many (sat Char.isSpace)
+  fun notNl c = c <> #"\n"
+  fun cmnt () =
+    str "#" >>
+    many ((sat notNl) </choice/> (eof () >> zero) ) >>
+    (eof () </choice/> (item >> return ()))
+
+  (* fun ws () = many (sat Char.isSpace) *)
+  fun ws () =
+    many (((sat Char.isSpace) >> return ()) </choice/> (cmnt ()))
+
+
   fun identifier () =
     many1 (sat Char.isAlpha) >>= return o String.implode
 
@@ -215,19 +224,6 @@ struct
     tok "=>" >> ws () >> identifier () >>= (fn bs =>
     return (SymSpec (Symbol (id, sort, bs)))
     )))
-
-        (*
-  fun parseSymDecl () =
-    tok "sym" >> ws () >>
-    identifier () >>= (fn id => 
-    tok ":" >> 
-    return (BaseSort "")
-    (* ws () >>
-    delayed parseSort *) >>= (fn s => tok "=>" >>
-    identifier () >>= (fn bs =>
-    return (SymSpec (Symbol (id, s, bs)))
-    )))
-    *)
 
 
   fun parseSpec () =
