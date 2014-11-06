@@ -706,7 +706,7 @@ struct
                 (ws >> str "b" >> nofail (trS () >>
                 delayed (fn () =>
                 (case agents of
-                      [] => Parser.error "There are no more agents to backtrack to"
+                      [] => Parser.fail "There are no more agents to backtrack to"
                     | _ => return (ctx,agents)))))
     </choice/>
                 (  ((ws >> str "q" >> trS ()) </choice/> (ws >> eof ())) >>
