@@ -113,7 +113,7 @@ struct
 
   fun stok s =
                     (ws >> str s >> return ())
-       </choice/>   (P.error (s ^ " expected"))
+       </choice/>   (P.fail (s ^ " expected"))
 end;
 
 
@@ -139,16 +139,11 @@ local
   open Psi
 in
 
-
-  fun parseLiteral p = literal >>= Either.either Parser.error return o p
+  fun parseLiteral p = literal >>= (Either.either (Parser.fail) return) o p
   val name = parseLiteral parseName
-    </choice/> error "Name was expected"
   val assr = parseLiteral parseAssr
-    </choice/> error "Assertion was expected"
   val cond = parseLiteral parseCond
-    </choice/> error "Condition was expected"
   val term = parseLiteral parseTerm
-    </choice/> error "Term was expected"
 
 
   fun tok p = ws >> p >>= (fn x => ws >> return x)
@@ -176,7 +171,7 @@ in
                 name </sepby1/> (t ",") >>=
     (fn x =>    nofail $ t ")" >>
                 (case A.Req.var of
-                     NONE => Parser.error
+                     NONE => Parser.fail
                         ("Abbreviated form of Input is not supported" ^
                          " by the instance!")
                    | SOME v => return (x, List.map v x))
@@ -231,7 +226,7 @@ in
                     (name </sepby1/> (t ",")) >>=
     (fn ns =>   t ")" >>
                 delayed (restrictedAgent ["parallel"]) >>=
-    (fn a =>    return (List.foldr Restriction a ns)
+    (fn a =>    return (List.foldr Restriction a (Lst.reverse ns))
     ))
 
   and replication () =
@@ -281,7 +276,7 @@ in
 
 
   and restrictedAgent l () =
-    List.foldr choice (error "Agent expected") $
+    List.foldr choice (fail "Agent expected") $
         map snd $
             (filter (not o (flip member) l o fst) $ agentProds ())
 
