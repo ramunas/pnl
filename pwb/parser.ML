@@ -40,7 +40,7 @@ sig
   val >>      : 'a parser * 'b parser -> 'b parser
 
   val delayed : (unit -> 'a parser) -> 'a parser
-  val error   : string -> 'result parser
+  val fail    : string -> 'result parser
   val zero    : 'result parser
   val choice  : 'a parser * 'a parser -> 'a parser
   val eof     : 'a -> 'a parser
@@ -102,7 +102,7 @@ struct
 
   fun delayed f = Parser (fn s => (parse $ f ()) s)
 
-  fun error  e = Parser (fn s => LEFT  (Fail e, s))
+  fun fail e = Parser (fn s => LEFT (Fail e, s))
   val zero     = Parser (fn s => LEFT  (Fail "zero", s))
   fun return a = Parser (fn s => RIGHT (a, s))
 
@@ -119,13 +119,12 @@ struct
 
   fun p >> f = p >>= (fn _ => f)
 
-  (* Ordered choice. Tries the first parser, if it succeds returns its result,
-  * otherwise tries the second parser and if it succeeds returns its result,
-  * and if it fails reutrns the first parser's failure *)
   fun choice (p,q) = Parser (fn s =>
-    parse p s |> either (fn fl => parse q s |> either (fn _ => LEFT fl)
-                                                      returnE)
-                        returnE)
+    case parse p s of
+         LEFT (m as (Error e, s)) => LEFT m
+       | LEFT (Fail e, _) => parse q s
+       | RIGHT m => RIGHT m
+    )
 
   val item = Parser (fn s =>
     case head s of
@@ -146,7 +145,7 @@ struct
         else zero)
 
   fun chr c =
-    (sat (op = /> c)) </choice/> error ("character "
+    (sat (op = /> c)) </choice/> fail ("character "
                                        ^(Char.toString c) ^" was expected")
 
   fun str' [] = return ()
@@ -157,7 +156,7 @@ struct
 
   fun str s =
     (str' (String.explode s) >>
-    return s) </choice/> error ("string " ^ s ^ " expected")
+    return s) </choice/> fail ("string " ^ s ^ " expected")
 
   fun until' p s a =
     case parse p s of
