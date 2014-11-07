@@ -20,6 +20,10 @@ sig
   (* permission set *)
   type pset
 
+  datatype name_pol = LeftName | RightName
+
+  val namePol : name -> name_pol
+
   type name_perm
 
   val swap : name * name -> name_perm
@@ -30,9 +34,8 @@ sig
   val getVarSort : variable -> sort
   val getPSet : variable -> pset
 
-  val var : string * sort * pset -> variable
-  val name : string * name_sort -> name
-
+  val makeVar : string * sort * pset -> variable
+  val makeName : string * name_pol * name_sort -> name
 
   type sym
 
@@ -48,6 +51,11 @@ sig
   val absTerm   : name * term -> term
 
   val applyNamePerm : name_perm -> term -> term
+
+
+  type nameset
+
+  val fa : term -> nameset
 
 
   (* val inferType : term -> (string, sort * base_sort) Either.either *)
@@ -93,11 +101,14 @@ struct
     | sortToString (TupleSort sorts) = "(" ^ (join ", " (map sortToString sorts)) ^ ")"
     | sortToString (AbsSort (nameSort, sort)) = "[" ^ nameSort ^ "]" ^ (sortToString sort)
 
+  datatype name_pol = LeftName | RightName
 
   datatype name
-    = Name of string * name_sort
+    = Name of string * name_pol * name_sort
 
-  val name = Name
+  val makeName = Name
+
+  fun namePol (Name (_,p,_)) = p
 
   datatype pset
     = PSet of (name_sort list) * (name_sort list)
@@ -105,9 +116,9 @@ struct
   datatype variable
     = Variable of string * sort * pset
 
-  val var = Variable
+  val makeVar = Variable
 
-  fun getNameSort (Name (_,s)) = s
+  fun getNameSort (Name (_,_,s)) = s
   fun getVarSort (Variable (_,s,_)) = s
   fun getPSet (Variable (_,_,p)) = p
 
@@ -156,6 +167,18 @@ struct
     AbsTerm (p name, applyNamePerm (NamePerm p) term)
 
   (* fun inferType x = Err.error "" *)
+
+  datatype nameset
+    = FinNameSet of name list
+    | PNameSet of pset
+
+  (* fun nsUnion  *)
+
+  fun fa (NameTerm n) = FinNameSet [n]
+    | fa (VarTerm (Variable (_,_,p))) = PNameSet p
+    | fa (SymTerm (_,t)) = fa t
+    | fa (AbsTerm (n,t)) = fa t
+    | fa (TupleTerm tms) = FinNameSet []
 
 
   datatype specification
@@ -217,7 +240,7 @@ struct
         (ws () >> identifier () >>= (fn r => return (BaseSort r)))
 
   fun parseSymDecl () =
-    tok "sym" >> ws () >>
+    tok "symbol" >> ws () >>
     identifier () >>= (fn id =>
     tok ":" >>
     delayed parseSort >>= (fn sort =>
