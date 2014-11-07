@@ -151,6 +151,7 @@ sig
   val filter       : ('a -> bool) -> 'a list -> 'a list
   val sngl         : 'a -> 'a list
   val zip          : 'a list -> 'b list -> ('a * 'b) list
+  val unzip        : ('a * 'b) list -> ('a list) * ('b list)
   val zipwith      : ('a * 'b -> 'c) -> 'a list -> 'b list -> 'c list
   val intersperse  : 'a -> 'a list -> 'a list
   val enum         : int -> int -> int list
@@ -201,6 +202,7 @@ end = struct
   fun sngl a = [a]
 
   fun zip a b = ListPair.zip (a,b)
+  fun unzip a = ListPair.unzip a
 
   fun zipwith f a b = List.map f $ zip a b
 
@@ -284,8 +286,19 @@ struct
 end;
 
 
+structure Str :
+sig
+  val join : string -> string list -> string
+end =
+struct
+  fun join x (a::b::xs) = a ^ x ^ join x (b::xs)
+    | join x (a::[]) = a
+    | join x ([]) = "" 
+end;
+
 structure Missing =
 struct
+  open Str
   open Fun
   open Opt
   open Tpl

@@ -736,8 +736,6 @@ in
       r @ s
     end
 
-    (* TODO: add a wellformedness condition before simulating *)
-
     fun eval_axiom e (TAU, (ip as (P.Tau p), _)) =
       SOME (ip, Act.Tau, Constr [], p)
 
