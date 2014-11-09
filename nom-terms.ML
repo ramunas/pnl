@@ -17,23 +17,27 @@ sig
 
   type name
   type variable
-  (* permission set *)
   type pset
 
-  datatype name_pol = LeftName | RightName
-
-  val namePol : name -> name_pol
+  val isLeft : name -> bool
+  val isRight : name -> bool
 
   type name_perm
 
-  val swap : name * name -> name_perm
-  val idPerm : name_perm
-  val compose : name_perm -> name_perm -> name_perm
+  val pSwap         : name * name -> name_perm
+  val pId           : name_perm
+  val pCompose      : name_perm -> name_perm -> name_perm
+  val pApp          : name_perm -> name -> name
+  val pIsWellSorted : name_perm -> (string, unit) Either.either
 
   val getNameSort : name -> name_sort
   val getVarSort : variable -> sort
   val getPSet : variable -> pset
+  val pAppPSet : name_perm -> pset -> pset
 
+  type name_pol
+  val polLeft : name_pol
+  val polRight : name_pol
   val makeVar : string * sort * pset -> variable
   val makeName : string * name_pol * name_sort -> name
 
@@ -49,12 +53,10 @@ sig
   val tupleTerm : term list -> term
   val symTerm   : sym * term -> term
   val absTerm   : name * term -> term
-
-  val applyNamePerm : name_perm -> term -> term
+  val pAppTerm : name_perm -> term -> term
 
 
   type nameset
-
   val fa : term -> nameset
 
 
@@ -78,6 +80,8 @@ end;
 
 structure NomTerm : NOM_TERM =
 struct
+  open Missing
+
   type base_sort = string 
   type name_sort = string
 
@@ -101,41 +105,90 @@ struct
     | sortToString (TupleSort sorts) = "(" ^ (join ", " (map sortToString sorts)) ^ ")"
     | sortToString (AbsSort (nameSort, sort)) = "[" ^ nameSort ^ "]" ^ (sortToString sort)
 
-  datatype name_pol = LeftName | RightName
+
+  datatype name_pol = NameLeft | NameRight
+  
+  val polLeft = NameLeft
+  val polRight = NameRight
 
   datatype name
     = Name of string * name_pol * name_sort
 
   val makeName = Name
 
-  fun namePol (Name (_,p,_)) = p
+  fun isLeft (Name (_,NameLeft,_)) = true
+    | isLeft _ = false
+
+  fun isRight (Name (_,NameRight,_)) = true
+    | isRight _ = false
+
+  fun getNameSort (Name (_,_,s)) = s
+
+  datatype fin_name_perm =
+    FinPerm of (name * name) list
+
+  type name_perm = fin_name_perm
+
+  val pId = FinPerm []
+  fun pCompose (FinPerm p1) (FinPerm p2) = (FinPerm (p1 @ p2))
+  fun pSwap (a,b) = Err.error ""
+
+  fun swapName (a,b) c =
+    if a = c then b
+    else if b = c then a
+    else c
+
+  fun pApp (FinPerm p) n =
+    List.foldr (fn (s, c) => swapName s c) n p
+
+  fun pIsWellSorted' [] = RIGHT ()
+    | pIsWellSorted' ((a,b)::rest) =
+    if getNameSort a = getNameSort b
+        then pIsWellSorted' rest
+        else LEFT "a and b is not well sorted"
+
+  fun pIsWellSorted (FinPerm p) = pIsWellSorted' p
 
   datatype pset
-    = PSet of (name_sort list) * (name_sort list)
+    = PSet of (name list) * (name list)
+
+  fun psetMember a (PSet (aset,bset)) =
+    if isLeft a
+        then not (Lst.member a aset)
+        else member a bset
+
+  fun remove a aset =
+    filter (fn b => not(a = b)) aset
+
+  fun psetAddName a (PSet (aset,bset)) =
+    if isLeft a
+        then PSet (remove a aset, bset)
+        else PSet (aset, a::bset)
+
+  fun psetRemName a (PSet (aset,bset)) =
+    if isLeft a
+        then (PSet (a::aset,bset))
+        else (PSet (aset, remove a bset))
+
+  fun psetSwapName (a,b) pset =
+    case (psetMember a pset, psetMember b pset) of
+         (true,true)   => pset
+       | (true,false)  => psetAddName b (psetRemName a pset)
+       | (false,true)  => psetAddName a (psetAddName b pset)
+       | (false,false) => pset
+
+  fun psetAppPerm p pset =
+    List.foldr (fn (p,ps) => psetSwapName p ps) pset p
+
+  fun pAppPSet (FinPerm p) pset = psetAppPerm p pset
+
 
   datatype variable
     = Variable of string * sort * pset
 
   val makeVar = Variable
-
-  fun getNameSort (Name (_,_,s)) = s
   fun getVarSort (Variable (_,s,_)) = s
   fun getPSet (Variable (_,_,p)) = p
-
-
-  datatype name_perm
-    = NamePerm of name -> name
-
-  val idPerm = NamePerm (fn n => n)
-
-  fun swap (a, b) = 
-    NamePerm (fn c =>
-        if a = c then b
-        else if b = c then a
-        else c)
-
-  fun compose (NamePerm p1) (NamePerm p2) =
-    NamePerm (p1 o p2)
 
 
   datatype sym
@@ -147,26 +200,22 @@ struct
 
   datatype term
     = NameTerm of name
-    | VarTerm of variable
+    | VarTerm of name_perm * variable
     | TupleTerm of term list
     | SymTerm of sym * term
     | AbsTerm of name * term
 
-
   val nameTerm  = NameTerm
-  val varTerm   = VarTerm
+  fun varTerm v = VarTerm (pId, v)
   val tupleTerm = TupleTerm
   val symTerm   = SymTerm
   val absTerm   = AbsTerm
 
-  fun applyNamePerm (NamePerm p) (NameTerm n) = NameTerm (p n)
-    | applyNamePerm (NamePerm p) (VarTerm n) = Err.error "Perm on var term"
-    | applyNamePerm (NamePerm p) (TupleTerm args) = TupleTerm (map (applyNamePerm (NamePerm p)) args)
-    | applyNamePerm (NamePerm p) (SymTerm (sym,term)) = SymTerm (sym, applyNamePerm (NamePerm p) term)
-    | applyNamePerm (NamePerm p) (AbsTerm (name, term)) =
-    AbsTerm (p name, applyNamePerm (NamePerm p) term)
-
-  (* fun inferType x = Err.error "" *)
+  fun pAppTerm p (NameTerm n) = NameTerm (pApp p n)
+    | pAppTerm p (VarTerm n) = Err.error "Perm on var term"
+    | pAppTerm p (TupleTerm args) = TupleTerm (map (pAppTerm p) args)
+    | pAppTerm p (SymTerm (sym,term)) = SymTerm (sym, pAppTerm p term)
+    | pAppTerm p (AbsTerm (name, term)) = AbsTerm (pApp p name, pAppTerm p term)
 
   datatype nameset
     = FinNameSet of name list
@@ -175,10 +224,11 @@ struct
   (* fun nsUnion  *)
 
   fun fa (NameTerm n) = FinNameSet [n]
-    | fa (VarTerm (Variable (_,_,p))) = PNameSet p
+    | fa (VarTerm (p, Variable (_,_,pset))) = PNameSet (pAppPSet p pset)
     | fa (SymTerm (_,t)) = fa t
     | fa (AbsTerm (n,t)) = fa t
-    | fa (TupleTerm tms) = FinNameSet []
+    | fa (TupleTerm tms) = Err.error "unimplemented tms"
+
 
 
   datatype specification
@@ -223,10 +273,10 @@ struct
   fun tok s = ws () >> str s >> return ()
 
   fun parseNameSortDecl () =
-    tok "namesort" >> ws () >> identifier () >>= return o NameSortSpec
+    tok "namesort" >> ws () >> nofail (identifier () >>= return o NameSortSpec)
 
   fun parseBaseSortDecl () =
-    tok "sort" >> ws () >> identifier () >>= return o BaseSortSpec
+    tok "sort" >> ws () >> nofail (identifier () >>= return o BaseSortSpec)
 
   fun parseSort () =
       (tok "[" >> ws () >> identifier () >>= (fn r => tok "]" >>
