@@ -328,6 +328,8 @@ struct
             parseBaseSortDecl ()
         </choice/>
             parseSymDecl ()
+        </choice/>
+            (ws () >> str "name" >> ws () >> parseNameDef () >> return (NameSortSpec "here"))
     ) >>= (fn r => ws () >> eof r)
 
   fun toSpecification [] r = r
@@ -346,7 +348,7 @@ struct
     in
       case parse (parseSpec ()) ps of
            LEFT (P.Fail m,s) => Err.error m
-         | LEFT (P.Error m, s) => Err.error m
+         | LEFT (msg as (P.Error m, s)) => Err.error (errormsg msg)
          | RIGHT (r,s) => toSpecification r emptySpecification
     end)
 
