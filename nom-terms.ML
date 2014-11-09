@@ -62,7 +62,7 @@ sig
 
   (* val inferType : term -> (string, sort * base_sort) Either.either *)
   (*
-  val unify : term -> term -> 
+  val unify : term -> term ->
   *)
 
 
@@ -82,7 +82,7 @@ structure NomTerm : NOM_TERM =
 struct
   open Missing
 
-  type base_sort = string 
+  type base_sort = string
   type name_sort = string
 
   datatype sort
@@ -98,7 +98,7 @@ struct
 
   fun join x (a::b::xs) = a ^ x ^ join x (b::xs)
     | join x (a::[]) = a
-    | join x ([]) = "" 
+    | join x ([]) = ""
 
   fun sortToString (NameSort x) = x
     | sortToString (BaseSort x) = x
@@ -107,7 +107,7 @@ struct
 
 
   datatype name_pol = NameLeft | NameRight
-  
+
   val polLeft = NameLeft
   val polRight = NameRight
 
@@ -242,7 +242,7 @@ struct
 
 
   structure P = Parser(ParserStreamIO)
-  local 
+  local
     open Missing
     open P
   in
@@ -299,6 +299,28 @@ struct
     )))
 
 
+  fun parseName () =
+    identifier ()
+
+  fun parseNameSort () = identifier ()
+
+  fun parseNamePolSpec () =
+    (str "<" >> return NameLeft)
+    </choice/>
+    (str ">" >> return NameRight)
+    </choice/>
+    (return NameLeft)
+
+  fun parseNameDef () =
+    ws () >> 
+    parseName () >>= (fn a =>
+    ws () >>
+    parseNamePolSpec () >>= (fn p =>
+    str ":" >>
+    parseNameSort () >>= (fn s =>
+    return (Name (a, p, s))
+    )))
+
   fun parseSpec () =
     many (
             parseNameSortDecl ()
@@ -317,8 +339,8 @@ struct
     toSpecification rest (Spec (ns,bs,s::ss))
 
 
-  fun readSpecFromFile fileName = 
-    MissingIO.withOpenFile fileName (fn inStream => 
+  fun readSpecFromFile fileName =
+    MissingIO.withOpenFile fileName (fn inStream =>
     let
       val ps = ParserStreamIO.make inStream
     in
