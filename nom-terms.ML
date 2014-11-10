@@ -34,6 +34,7 @@ sig
   val getVarSort : variable -> sort
   val getPSet : variable -> pset
   val pAppPSet : name_perm -> pset -> pset
+  val makePSet : unit -> pset
 
   type name_pol
   val polLeft : name_pol
@@ -152,6 +153,8 @@ struct
   datatype pset
     = PSet of (name list) * (name list)
 
+  fun makePSet () = PSet ([],[])
+
   fun psetMember a (PSet (aset,bset)) =
     if isLeft a
         then not (Lst.member a aset)
@@ -234,7 +237,7 @@ struct
   datatype specification
     = Spec of name_sort list * base_sort list * sym list
 
-  val emptySpecification = Spec ([],[],[])
+  val emptySpecification = []
 
   fun getNameSorts (Spec (s,_,_)) = s
   fun getBaseSorts (Spec (_,b,_)) = b
@@ -253,8 +256,10 @@ struct
     = NameSortSpec of name_sort
     | BaseSortSpec of base_sort
     | SymSpec of sym
+    | NameSpec of name
+    | VarSpec of variable
 
-  type spec = spec' list
+  type specification = spec' list
 
   fun notNl c = c <> #"\n"
   fun cmnt () =
@@ -262,9 +267,10 @@ struct
     many ((sat notNl) </choice/> (eof () >> zero) ) >>
     (eof () </choice/> (item >> return ()))
 
-  (* fun ws () = many (sat Char.isSpace) *)
-  fun ws () =
-    many (((sat Char.isSpace) >> return ()) </choice/> (cmnt ()))
+  fun ws' () =
+    ((sat Char.isSpace) >> return ()) </choice/> (cmnt ())
+  fun ws () = many (ws' ())
+  fun ws1 () = many1 (ws' ())
 
 
   fun identifier () =
@@ -311,14 +317,52 @@ struct
     </choice/>
     (return NameLeft)
 
-  fun parseNameDef () =
-    ws () >> 
+  fun parseNameDecl () =
+    ws () >>
+    str "name" >>
+    ws1 () >>
     parseName () >>= (fn a =>
     ws () >>
     parseNamePolSpec () >>= (fn p =>
+    ws () >>
     str ":" >>
+    ws () >>
     parseNameSort () >>= (fn s =>
-    return (Name (a, p, s))
+    return (NameSpec $ Name (a, p, s))
+    )))
+
+
+  datatype name_modifier = AddNameToVar | RemNameToVar
+
+  fun parseVarNameMod () =
+    (str "-" >> return RemNameToVar)
+    </choice/>
+    (str "+" >> return AddNameToVar)
+
+  fun parseVarName () =
+    ws () >>
+    parseVarNameMod () >>= (fn m =>
+    ws () >>
+    parseName () >>= (fn a =>
+    return (m,a)
+    ))
+
+  fun parseVarNames () =
+    many (parseVarName ())
+
+  fun parseVarDecl () =
+    ws () >>
+    str "var" >>
+    nofail (
+    ws1 () >>
+    str "`" >>
+    parseName () >>= (fn varName =>
+    ws () >>
+    parseVarNames () >>
+    ws () >>
+    str ":" >>
+    parseSort () >>= (fn varSort =>
+    return (VarSpec $ makeVar (varName, varSort, makePSet ()))
     )))
 
   fun parseSpec () =
@@ -329,16 +373,10 @@ struct
         </choice/>
             parseSymDecl ()
         </choice/>
-            (ws () >> str "name" >> ws () >> parseNameDef () >> return (NameSortSpec "here"))
+            parseNameDecl ()
+        </choice/>
+            parseVarDecl ()
     ) >>= (fn r => ws () >> eof r)
-
-  fun toSpecification [] r = r
-    | toSpecification ((NameSortSpec s)::rest) (Spec (ns,bs,ss)) =
-    toSpecification rest (Spec (s::ns,bs,ss))
-    | toSpecification ((BaseSortSpec b)::rest) (Spec (ns,bs,ss)) =
-    toSpecification rest (Spec (ns, b::bs,ss))
-    | toSpecification ((SymSpec s)::rest) (Spec (ns,bs,ss)) =
-    toSpecification rest (Spec (ns,bs,s::ss))
 
 
   fun readSpecFromFile fileName =
@@ -349,7 +387,7 @@ struct
       case parse (parseSpec ()) ps of
            LEFT (P.Fail m,s) => Err.error m
          | LEFT (msg as (P.Error m, s)) => Err.error (errormsg msg)
-         | RIGHT (r,s) => toSpecification r emptySpecification
+         | RIGHT (r,s) => r
     end)
 
   end (* end of local open *)
