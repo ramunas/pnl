@@ -261,8 +261,7 @@ struct
   type ast_pos = int * int * string
 
   datatype ast_sort
-    = AstNameSort of string
-    | AstBaseSort of string
+    = AstNameOrBaseSort of string
     | AstTupleSort of ast_sort list
     | AstAbsSort of string * ast_sort
 
@@ -307,6 +306,43 @@ struct
   fun parseBaseSortDecl () =
     tok "type" >> ws () >> nofail (identifier () >>= return o AstBaseSortDecl)
 
+
+  fun parseSort () =
+        parseBaseOrNameSort ()
+    </choice/>
+        parseAbsSort ()
+    </choice/>
+        parseTupleSort ()
+    </choice/>
+        parseSortGroup ()
+
+  and parseSortGroup () =
+    tok "(" >>
+    delayed parseSort >>= (fn s =>
+    tok ")" >>
+    return s)
+
+  and parseBaseOrNameSort () =
+    ws () >> identifier () >>= (fn r => return (AstNameOrBaseSort r))
+
+  and parseAbsSort () =
+    (tok "[" >> ws () >> identifier () >>= (fn r => tok "]" >>
+    delayed parseSort >>= (fn s =>
+    return (AstAbsSort (r,s)) )) )
+
+  and parseTupleSort () =
+    (tok "(" >> tok ")" >> return (AstTupleSort []))
+    </choice/>
+  (
+    tok "(" >>
+    (delayed parseSort) >>= (fn s =>
+    tok "," >>
+    ((delayed parseSort ) </sepby1/> (tok ",")) >>= (fn ss =>
+    tok ")" >>
+    return (AstTupleSort (s::ss))))
+  )
+
+  (*
   fun parseSort () =
       (tok "[" >> ws () >> identifier () >>= (fn r => tok "]" >>
       delayed parseSort >>= (fn s =>
@@ -315,7 +351,8 @@ struct
         (tok "(" >> delayed parseSort </sepby/> (tok ",") >>=
         (fn r => tok ")" >> return (AstTupleSort r)))
     </choice/>
-        (ws () >> identifier () >>= (fn r => return (AstBaseSort r)))
+        (ws () >> identifier () >>= (fn r => return (AstNameOrBaseSort r)))
+        *)
 
   fun parseSymDecl () =
     tok "symbol" >> ws1 () >>
@@ -437,13 +474,18 @@ struct
     ws () >> str "(" >> delayed parseTerm >>= (fn t =>
     ws () >> str ")" >> return t)
 
+  and parseUnitTupleTerm () =
+    tok "(" >> tok ")" >> return (AstTuple [])
+
   and parseTupleTerm () =
-    ws () >> str "(" >>
-    delayed parseTerm >>= (fn t1 =>
-    ws () >> str "," >> ws () >>
-    ((ws () >> delayed parseTerm) </sepby1/> (ws () >> str ",")) >>= (fn tms =>
-    ws () >> str ")" >>
-    return (AstTuple (t1::tms))))
+        (parseUnitTupleTerm ())
+    </choice/>
+        (ws () >> str "(" >>
+        delayed parseTerm >>= (fn t1 =>
+        ws () >> str "," >> ws () >>
+        ((ws () >> delayed parseTerm) </sepby1/> (ws () >> str ",")) >>= (fn tms =>
+        ws () >> str ")" >>
+        return (AstTuple (t1::tms)))))
 
   and parseVarTerm () =
     ws () >> str "`" >> 
