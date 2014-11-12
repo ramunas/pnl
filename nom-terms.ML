@@ -342,18 +342,6 @@ struct
     return (AstTupleSort (s::ss))))
   )
 
-  (*
-  fun parseSort () =
-      (tok "[" >> ws () >> identifier () >>= (fn r => tok "]" >>
-      delayed parseSort >>= (fn s =>
-      return (AstAbsSort (r,s)) )) )
-    </choice/>
-        (tok "(" >> delayed parseSort </sepby/> (tok ",") >>=
-        (fn r => tok ")" >> return (AstTupleSort r)))
-    </choice/>
-        (ws () >> identifier () >>= (fn r => return (AstNameOrBaseSort r)))
-        *)
-
   fun parseSymDecl () =
     tok "symbol" >> ws1 () >>
     identifier () >>= (fn id =>
