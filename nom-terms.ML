@@ -132,7 +132,7 @@ struct
 
   val pId = FinPerm []
   fun pCompose (FinPerm p1) (FinPerm p2) = (FinPerm (p1 @ p2))
-  fun pSwap (a,b) = Err.error ""
+  fun pSwap (a,b) = FinPerm [(a,b)]
 
   fun swapName (a,b) c =
     if a = c then b
@@ -252,14 +252,37 @@ struct
 
   fun readSpec _ = Err.error "Unimplemented"
 
-  datatype spec'
-    = NameSortSpec of name_sort
-    | BaseSortSpec of base_sort
-    | SymSpec of sym
-    | NameSpec of name
-    | VarSpec of variable
+  datatype name_modifier = AddNameToVar | RemNameToVar
 
-  type specification = spec' list
+  type ast_basesort = string
+  type ast_namesort = string
+
+  (* line, col, file *)
+  type ast_pos = int * int * string
+
+  datatype ast_sort
+    = AstNameSort of string
+    | AstBaseSort of string
+    | AstTupleSort of ast_sort list
+    | AstAbsSort of string * ast_sort
+
+  datatype ast_term
+    = AstAbs of string * ast_term
+    | AstVarTerm of ((string * string) list) * string
+    | AstName of string
+    | AstTuple of ast_term list
+    | AstSym of string * ast_term
+
+  datatype ast_node
+    = AstNameSortDecl of string
+    | AstBaseSortDecl of string
+    | AstNameDecl of string * name_pol * string
+    | AstVarDecl of string * ((name_modifier * string) list) * ast_sort
+    | AstSymDecl of string * ast_sort * ast_basesort
+    | AstTermDecl of ast_term
+
+  type ast = ast_node list
+  type specification = ast
 
   fun notNl c = c <> #"\n"
   fun cmnt () =
@@ -279,29 +302,28 @@ struct
   fun tok s = ws () >> str s >> return ()
 
   fun parseNameSortDecl () =
-    tok "namesort" >> ws () >> nofail (identifier () >>= return o NameSortSpec)
+    tok "nametype" >> ws () >> nofail (identifier () >>= return o AstNameSortDecl)
 
   fun parseBaseSortDecl () =
-    tok "sort" >> ws () >> nofail (identifier () >>= return o BaseSortSpec)
+    tok "type" >> ws () >> nofail (identifier () >>= return o AstBaseSortDecl)
 
   fun parseSort () =
       (tok "[" >> ws () >> identifier () >>= (fn r => tok "]" >>
       delayed parseSort >>= (fn s =>
-      return (AbsSort (r,s)) )) )
+      return (AstAbsSort (r,s)) )) )
     </choice/>
         (tok "(" >> delayed parseSort </sepby/> (tok ",") >>=
-        (fn r => tok ")" >> return (TupleSort r)))
+        (fn r => tok ")" >> return (AstTupleSort r)))
     </choice/>
-        (* Do I need to distinguish between name and base sorts? *)
-        (ws () >> identifier () >>= (fn r => return (BaseSort r)))
+        (ws () >> identifier () >>= (fn r => return (AstBaseSort r)))
 
   fun parseSymDecl () =
-    tok "symbol" >> ws () >>
+    tok "symbol" >> ws1 () >>
     identifier () >>= (fn id =>
     tok ":" >>
     delayed parseSort >>= (fn sort =>
     tok "=>" >> ws () >> identifier () >>= (fn bs =>
-    return (SymSpec (Symbol (id, sort, bs)))
+    return (AstSymDecl (id, sort, bs))
     )))
 
 
@@ -328,11 +350,10 @@ struct
     str ":" >>
     ws () >>
     parseNameSort () >>= (fn s =>
-    return (NameSpec $ Name (a, p, s))
+    return (AstNameDecl (a, p, s))
     )))
 
 
-  datatype name_modifier = AddNameToVar | RemNameToVar
 
   fun parseVarNameMod () =
     (str "-" >> return RemNameToVar)
@@ -358,12 +379,75 @@ struct
     str "`" >>
     parseName () >>= (fn varName =>
     ws () >>
-    parseVarNames () >>
+    parseVarNames () >>= (fn varContext =>
     ws () >>
     str ":" >>
     parseSort () >>= (fn varSort =>
-    return (VarSpec $ makeVar (varName, varSort, makePSet ()))
-    )))
+    return (AstVarDecl (varName, varContext, varSort))
+    ))))
+
+
+  fun maybe p r = p </choice/> return r
+
+
+  fun parseSwaps () =
+    many (
+    ws () >>
+    str "(" >>
+    parseName () >>= (fn a =>
+    ws1 () >>
+    parseName () >>= (fn b =>
+    ws () >>
+    str ")" >>
+    return (a,b) )) )
+
+  fun parseTerm () =
+        parseTupleTerm ()
+    </choice/>
+        parseTermGroup ()
+    </choice/>
+        parseVarTerm ()
+    </choice/>
+        parseNameTerm ()
+    (* </choice/> *)
+    (*     parseSymTerm () *)
+
+  (* to resolve this, one would like to have a sym list,
+   * and a var list *)
+   (*
+  and parseSym () =
+    ws () >>
+    identifier () >>= (fn i =>
+    )
+    *)
+
+  and parseTermGroup () =
+    ws () >> str "(" >> delayed parseTerm >>= (fn t =>
+    ws () >> str ")" >> return t)
+
+  and parseTupleTerm () =
+    ws () >> str "(" >>
+    delayed parseTerm >>= (fn t1 =>
+    ws () >> str "," >> ws () >>
+    ((ws () >> delayed parseTerm) </sepby1/> (ws () >> str ",")) >>= (fn tms =>
+    ws () >> str ")" >>
+    return (AstTuple (t1::tms))))
+
+  and parseVarTerm () =
+    ws () >> str "`" >> 
+    parseSwaps () >>= (fn sw =>
+    ws () >>
+    identifier () >>= (fn name =>
+    return (AstVarTerm (sw, name))
+    ))
+
+  and parseNameTerm () =
+    identifier () >>= return o AstName
+
+  fun parseTermDecl () =
+    ws () >> str "term" >> ws1 () >> 
+    nofail (parseTerm () >>= return o AstTermDecl)
+
 
   fun parseSpec () =
     many (
@@ -376,6 +460,8 @@ struct
             parseNameDecl ()
         </choice/>
             parseVarDecl ()
+        </choice/>
+            parseTermDecl ()
     ) >>= (fn r => ws () >> eof r)
 
 
