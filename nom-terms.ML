@@ -271,7 +271,7 @@ struct
     | AstVarTerm of ((string * string) list) * string
     | AstName of string
     | AstTuple of ast_term list
-    | AstSym of string * ast_term
+    | AstSym of string * (ast_term list)
 
   datatype ast_node
     = AstNameSortDecl of string
@@ -408,18 +408,30 @@ struct
     </choice/>
         parseVarTerm ()
     </choice/>
+        parseSymTerm ()
+    </choice/>
         parseNameTerm ()
-    (* </choice/> *)
-    (*     parseSymTerm () *)
+    </choice/>
+        parseAbsTerm ()
 
-  (* to resolve this, one would like to have a sym list,
+  (* TODO: add mixfix
+   * to resolve this, one would like to have a sym list,
    * and a var list *)
-   (*
-  and parseSym () =
+  and parseSymTerm () =
     ws () >>
     identifier () >>= (fn i =>
-    )
-    *)
+    ws () >> str "(" >> ws () >>
+    (parseTerm () </sepby/> (ws () >> str ",")) >>= (fn tms =>
+    ws () >> str ")" >>
+    return (AstSym (i, tms))
+    ))
+
+  and parseAbsTerm () =
+    ws () >> str "[" >> ws () >>
+    parseName () >>= (fn x =>
+    ws () >> str "]" >> ws () >>
+    parseTerm () >>= (fn t =>
+    return (AstAbs (x,t)) ))
 
   and parseTermGroup () =
     ws () >> str "(" >> delayed parseTerm >>= (fn t =>
