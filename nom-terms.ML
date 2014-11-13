@@ -282,6 +282,8 @@ struct
     | AstVarDecl of string * ((name_modifier * string) list) * ast_sort
     | AstSymDecl of string * ast_sort * ast_basesort
     | AstTermDecl of ast_term
+    | AstRewriteDecl of ast_term * ast_term
+    | AstSOSDecl of (ast_term * ast_term) list
 
   type ast = ast_node list
   type specification = ast
@@ -490,7 +492,7 @@ struct
         return (AstTuple (t1::tms)))))
 
   and parseVarTerm () =
-    ws () >> str "`" >> 
+    ws () >> str "`" >>
     parseSwaps () >>= (fn sw =>
     ws () >>
     identifier () >>= (fn name =>
@@ -501,9 +503,27 @@ struct
     identifier () >>= return o AstName
 
   fun parseTermDecl () =
-    ws () >> str "term" >> ws1 () >> 
+    ws () >> str "term" >> ws1 () >>
     nofail (parseTerm () >>= return o AstTermDecl)
 
+  fun parseRewriteDecl () =
+    ws () >>
+    str "rw" >>
+    ws1 () >> nofail (
+    parseTerm () >>= (fn t1 =>
+    ws () >> str "==>" >> ws () >>
+    parseTerm () >>= (fn t2 =>
+    return (AstRewriteDecl (t1, t2))
+    )))
+
+  fun parseSOSDecl () =
+    ws () >>
+    str "sos" >>
+    ((parseTerm () >>= (fn t1 =>
+    ws () >> str "-->" >>
+    parseTerm () >>= (fn t2 =>
+    return (t1,t2) )) ) </sepby1/> (ws () >> str "==>")) >>= (fn sos =>
+    return (AstSOSDecl sos) )
 
   fun parseSpec () =
     many (
@@ -518,6 +538,10 @@ struct
             parseVarDecl ()
         </choice/>
             parseTermDecl ()
+        </choice/>
+            parseRewriteDecl ()
+        </choice/>
+            parseSOSDecl ()
     ) >>= (fn r => ws () >> eof r)
 
 
