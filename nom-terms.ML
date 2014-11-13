@@ -260,10 +260,13 @@ struct
   (* line, col, file *)
   type ast_pos = int * int * string
 
+  datatype ast_abs_sort_kind
+    = AstAbsSortSingle | AstAbsSortStar | AstAbsSortPlus
+
   datatype ast_sort
     = AstNameOrBaseSort of string
     | AstTupleSort of ast_sort list
-    | AstAbsSort of string * ast_sort
+    | AstAbsSort of ast_abs_sort_kind * string * ast_sort
 
   datatype ast_term
     = AstAbs of string * ast_term
@@ -325,22 +328,33 @@ struct
   and parseBaseOrNameSort () =
     ws () >> identifier () >>= (fn r => return (AstNameOrBaseSort r))
 
+  and parseAbsSortKind () =
+        (tok "+" >> return AstAbsSortPlus)
+    </choice/>
+        (tok "*" >> return AstAbsSortStar)
+    </choice/>
+        (return AstAbsSortSingle)
+
   and parseAbsSort () =
-    (tok "[" >> ws () >> identifier () >>= (fn r => tok "]" >>
+    (tok "[" >>
+    ws () >>
+    identifier () >>= (fn r =>
+    tok "]" >>
+    parseAbsSortKind () >>= (fn k =>
     delayed parseSort >>= (fn s =>
-    return (AstAbsSort (r,s)) )) )
+    return (AstAbsSort (k,r,s)) ))))
 
   and parseTupleSort () =
     (tok "(" >> tok ")" >> return (AstTupleSort []))
-    </choice/>
-  (
-    tok "(" >>
-    (delayed parseSort) >>= (fn s =>
-    tok "," >>
-    ((delayed parseSort ) </sepby1/> (tok ",")) >>= (fn ss =>
-    tok ")" >>
-    return (AstTupleSort (s::ss))))
-  )
+        </choice/>
+    (
+        tok "(" >>
+        (delayed parseSort) >>= (fn s =>
+        tok "," >>
+        ((delayed parseSort ) </sepby1/> (tok ",")) >>= (fn ss =>
+        tok ")" >>
+        return (AstTupleSort (s::ss))))
+    )
 
   fun parseSymDecl () =
     tok "symbol" >> ws1 () >>
