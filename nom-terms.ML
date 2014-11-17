@@ -67,12 +67,13 @@ sig
   *)
 
 
-  type specification
+  (* type specification *)
+  (* val emptySpecification : specification *)
+  (* val readSpec : string -> specification *)
+  (* val readSpecFromFile : string -> specification *)
 
-  val emptySpecification : specification
 
-  val readSpec : string -> specification
-  val readSpecFromFile : string -> specification
+  val test : unit -> unit
 
 end;
 
@@ -234,15 +235,6 @@ struct
 
 
 
-  datatype specification
-    = Spec of name_sort list * base_sort list * sym list
-
-  val emptySpecification = []
-
-  fun getNameSorts (Spec (s,_,_)) = s
-  fun getBaseSorts (Spec (_,b,_)) = b
-  fun getSymList   (Spec (_,_,s)) = s
-
 
   structure P = Parser(ParserStreamIO)
   local
@@ -279,14 +271,14 @@ struct
     = AstNameSortDecl of string
     | AstBaseSortDecl of string
     | AstNameDecl of string * name_pol * string
-    | AstVarDecl of string * ((name_modifier * string) list) * ast_sort
+    | AstVarDecl of string * ((name_modifier * string) list)*ast_sort
     | AstSymDecl of string * ast_sort * ast_basesort
+    | AstPredDecl of string * ast_sort
     | AstTermDecl of ast_term
     | AstRewriteDecl of ast_term * ast_term
     | AstSOSDecl of (ast_term * ast_term) list
 
   type ast = ast_node list
-  type specification = ast
 
   fun notNl c = c <> #"\n"
   fun cmnt () =
@@ -358,8 +350,10 @@ struct
         return (AstTupleSort (s::ss))))
     )
 
+  (* TODO: add mix-fix notation *)
+
   fun parseSymDecl () =
-    tok "symbol" >> ws1 () >>
+    tok "fn" >> ws1 () >>
     identifier () >>= (fn id =>
     tok ":" >>
     delayed parseSort >>= (fn sort =>
@@ -551,16 +545,77 @@ struct
       val ps = ParserStreamIO.make inStream
     in
       case parse (parseSpec ()) ps of
-           LEFT (P.Fail m,s) => Err.error m
+           LEFT (msg as (P.Fail m,s)) => Err.error (errormsg msg)
          | LEFT (msg as (P.Error m, s)) => Err.error (errormsg msg)
          | RIGHT (r,s) => r
     end)
 
   end (* end of local open *)
 
+  datatype rewrite_rule
+    = RewriteRule of term * term
+
+  datatype sos_rule
+    = SOSRule of string (* predicate list * *)
+
+  datatype spec_node
+    = SpecNameSort of name_sort
+    | SpecBaseSort of base_sort
+    | SpecName of name
+    | SpecVar of variable
+    | SpecSym of sym
+    (* | SpecPred of predicate *)
+    | SpecTerm of term
+    | SpecRewrite of rewrite_rule
+    | SpecSOS of sos_rule
+
+  type specification = spec_node list
+
+  fun astNodeToSpecNode (AstNameSortDecl s) spec =
+    (case (List.find (fn (SpecNameSort a) => (s = a)
+                      | (SpecBaseSort b) => (s = b)
+                      | _ => false) spec) of
+         SOME _ => (error ("sort "^s^" is already declared"))
+       | NONE => (SpecNameSort s))
+    | astNodeToSpecNode (AstBaseSortDecl s) spec =
+    (case (List.find (fn (SpecNameSort a) => (s = a)
+                      | (SpecBaseSort b) => (s = b)
+                      | _ => false) spec) of
+         SOME _ => (error ("sort "^s^" is already declared"))
+       | NONE => (SpecBaseSort s))
+    | astNodeToSpecNode (AstNameDecl s) spec = error "AstNameDecl"
+    | astNodeToSpecNode (AstVarDecl s) spec = error "AstVarDecl"
+    | astNodeToSpecNode (AstSymDecl s) spec = error "AstSymDecl"
+    | astNodeToSpecNode (AstPredDecl s) spec = error "AstPredDecl"
+    | astNodeToSpecNode (AstTermDecl s) spec = error "AstTermDecl"
+    | astNodeToSpecNode (AstRewriteDecl s) spec = error "AstRewriteDecl"
+    | astNodeToSpecNode (AstSOSDecl s) spec = error "AstSOSDecl"
+
+  fun astToSpec' [] spec = spec
+    | astToSpec' (astNode::ast) spec =
+    (* TODO: better implenetation *)
+    astToSpec' ast
+        (spec @ [(astNodeToSpecNode astNode spec)])
+
+  fun astToSpec ast = astToSpec' ast []
+
+
+  fun test () =
+  let
+    val ast = (readSpecFromFile "test.spec")
+    val spec = astToSpec ast
+    val _ = PolyML.print ast
+  in
+    ()
+  end
+
+
+  (* fun astToSpec  *)
+
 end;
 
 
 PolyML.print_depth 100;
-NomTerm.readSpecFromFile "test.spec";
+(* NomTerm.readSpecFromFile "test.spec"; *)
+NomTerm.test ();
 
