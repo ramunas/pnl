@@ -569,31 +569,121 @@ struct
     | SpecRewrite of rewrite_rule
     | SpecSOS of sos_rule
 
-  type specification = spec_node list
+  type context = spec_node list
 
+  val emptyCont = []
+
+  fun specNameSorts spec =
+    spec |>
+    filter (fn (SpecNameSort s) => true | _ => false) |>
+    map (fn (SpecNameSort s) => s | _ => error "")
+
+  fun specBaseSorts spec =
+    spec |>
+    filter (fn (SpecBaseSort s) => true | _ => false) |>
+    map (fn (SpecBaseSort s) => s | _ => error "")
+
+
+  exception CheckError of string
+  fun err msg = raise CheckError msg
+
+  fun fmt' ([], _) = []
+    | fmt' (fmts, []) = fmts
+    | fmt' (f::fmts, v::vals) =
+    if f = "$"
+        then v::(fmt' (fmts, vals))
+        else f::(fmt' (fmts, v::vals))
+
+  fun ferr fmt vals =
+    err $
+        String.concat $
+            fmt' (map Char.toString (String.explode fmt), vals)
+
+
+
+  fun checkNameSort spec sort =
+    (case List.find (fn (SpecNameSort s) => s = sort
+                     | _ => false) spec of
+        SOME _ => sort
+      | NONE => ferr "The sort $ hase not been declared." [sort])
+
+  fun checkBaseSort spec sort =
+    (case List.find (fn (SpecBaseSort s) => s = sort
+                     | _ => false) spec of
+        SOME _ => sort
+      | NONE => ferr "The sort $ hase not been declared." [sort])
+
+  fun checkAstSortToSort spec (AstNameOrBaseSort x) =
+    (nameSort (checkNameSort spec x)
+    handle (CheckError msg) =>
+    (baseSort (checkBaseSort spec x)))
+
+    | checkAstSortToSort spec (AstTupleSort sorts) =
+        tupleSort (map (checkAstSortToSort spec) sorts)
+    | checkAstSortToSort spec (AstAbsSort (AstAbsSortSingle,nameSort,sort)) =
+        absSort (checkNameSort spec nameSort, checkAstSortToSort spec sort)
+
+  fun checkName spec name =
+    case List.find (fn (SpecName (Name (n, p, s))) => n = name
+                     | _ => false) spec of
+         SOME (SpecName n) => n
+       | NONE => ferr "Name $ has not been declared." [name]
+       | _ => error "Uhandled case in checkName"
+
+  (* TODO:
+  * Perhaps it is better to split this up into two functions:
+  * 1) Converts AST to Spec
+  * 2) Check the consistency of Spec
+  *
+  * TODO:
+  * report erors in file positions
+  *)
   fun astNodeToSpecNode (AstNameSortDecl s) spec =
     (case (List.find (fn (SpecNameSort a) => (s = a)
                       | (SpecBaseSort b) => (s = b)
                       | _ => false) spec) of
-         SOME _ => (error ("sort "^s^" is already declared"))
+         SOME _ => ferr "The sort $ has been already declared" [s]
        | NONE => (SpecNameSort s))
     | astNodeToSpecNode (AstBaseSortDecl s) spec =
     (case (List.find (fn (SpecNameSort a) => (s = a)
                       | (SpecBaseSort b) => (s = b)
                       | _ => false) spec) of
-         SOME _ => (error ("sort "^s^" is already declared"))
+         SOME _ => ferr "The sort $ has been already declared" [s]
        | NONE => (SpecBaseSort s))
-    | astNodeToSpecNode (AstNameDecl s) spec = error "AstNameDecl"
-    | astNodeToSpecNode (AstVarDecl s) spec = error "AstVarDecl"
-    | astNodeToSpecNode (AstSymDecl s) spec = error "AstSymDecl"
+    | astNodeToSpecNode (AstNameDecl (name,pol,sort)) spec =
+      (case (List.find (fn (SpecNameSort s) => s = sort
+                                 | _ => false) spec) of
+            SOME _ => SpecName (Name (name, pol, sort))
+          | NONE => ferr "The sort $ is not a name sort or it has not been declared." [sort]
+      )
+
+    | astNodeToSpecNode (AstVarDecl (name, n, sort)) spec = 
+    let
+      val p = List.foldr (fn ((m,nn), ps) => 
+            case m of
+                 AddNameToVar => psetAddName (checkName spec nn) ps
+               | RemNameToVar => psetRemName (checkName spec nn) ps
+        ) (makePSet ()) n
+      val s = checkAstSortToSort spec sort
+      val v = makeVar (name, s, p)
+    in
+      SpecVar v
+    end
+    | astNodeToSpecNode (AstSymDecl (name, sort, baseSort)) spec =
+    SpecSym $
+        Symbol (name, 
+                checkAstSortToSort spec sort,
+                checkBaseSort spec baseSort)
+    | astNodeToSpecNode _ _ = SpecNameSort ""
+    (*
     | astNodeToSpecNode (AstPredDecl s) spec = error "AstPredDecl"
     | astNodeToSpecNode (AstTermDecl s) spec = error "AstTermDecl"
     | astNodeToSpecNode (AstRewriteDecl s) spec = error "AstRewriteDecl"
     | astNodeToSpecNode (AstSOSDecl s) spec = error "AstSOSDecl"
+    *)
 
   fun astToSpec' [] spec = spec
     | astToSpec' (astNode::ast) spec =
-    (* TODO: better implenetation *)
     astToSpec' ast
         (spec @ [(astNodeToSpecNode astNode spec)])
 
@@ -602,9 +692,10 @@ struct
 
   fun test () =
   let
-    val ast = (readSpecFromFile "test.spec")
+    val ast = (readSpecFromFile "test.pnl")
     val spec = astToSpec ast
     val _ = PolyML.print ast
+    val _ = PolyML.print spec
   in
     ()
   end
