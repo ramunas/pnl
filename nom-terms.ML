@@ -594,12 +594,12 @@ struct
         then v::(fmt' (fmts, vals))
         else f::(fmt' (fmts, v::vals))
 
-  fun ferr fmt vals =
-    err $
-        String.concat $
-            fmt' (map Char.toString (String.explode fmt), vals)
+  fun fmt fm vals =
+    String.concat $
+        fmt' (map Char.toString (String.explode fm), vals)
 
-
+  fun ferr fm vals =
+    err $ fmt fm vals
 
   fun checkNameSort spec sort =
     (case List.find (fn (SpecNameSort s) => s = sort
@@ -622,22 +622,106 @@ struct
         tupleSort (map (checkAstSortToSort spec) sorts)
     | checkAstSortToSort spec (AstAbsSort (AstAbsSortSingle,nameSort,sort)) =
         absSort (checkNameSort spec nameSort, checkAstSortToSort spec sort)
+    | checkAstSortToSort spec _ = error "checkAstSortToSort"
 
   fun checkName spec name =
     case List.find (fn (SpecName (Name (n, p, s))) => n = name
                      | _ => false) spec of
          SOME (SpecName n) => n
-       | NONE => ferr "Name $ has not been declared." [name]
+       | NONE => ferr "The name $ has not been declared." [name]
        | _ => error "Uhandled case in checkName"
 
-  (* TODO:
-  * Perhaps it is better to split this up into two functions:
-  * 1) Converts AST to Spec
-  * 2) Check the consistency of Spec
-  *
-  * TODO:
-  * report erors in file positions
-  *)
+  fun checkVar spec name =
+    case List.find (fn (SpecVar (Variable (n,_,_))) => name = n
+                     | _ => false) spec of
+         SOME (SpecVar (v)) => v
+       | NONE => ferr "The variable '$' has not been declared." [name]
+       | _ => error "checkVar"
+
+  fun checkSym spec name =
+    case List.find (fn (SpecSym (Symbol (n,_,_))) => name = n
+                     | _ => false) spec of
+         SOME (SpecSym (s)) => s
+       | NONE => ferr "The symbol '$' has not been declared." [name]
+       | _ => error "checkSym"
+
+  fun checkAstPermToPerm spec astPerm =
+    FinPerm $
+        map (fn (a,b) => (checkName spec a, checkName spec b)) astPerm
+
+
+  fun sortToString (NameSort n) = n
+    | sortToString (BaseSort n) = n
+    | sortToString (TupleSort tms) =
+    "("^(join ", " (map sortToString tms))^")"
+    | sortToString (AbsSort (n,s)) =
+    fmt "[$]$" [n, sortToString s]
+
+  fun typeCheck spec (NameTerm (Name (n,_,s))) (NameSort sort) =
+    if s = sort
+        then ()
+        else ferr "The name '$' is expected to have the type '$' but '$' was found." [n,sort,s]
+    | typeCheck spec (VarTerm (perm, Variable (n,s,ps))) sort =
+    if s = sort
+        then ()
+        else ferr "The variable '$' is expected to have the type '$' but it has '$'" [n, sortToString sort, sortToString s]
+    | typeCheck spec (TupleTerm tms) (TupleSort sorts) =
+    if length tms = length sorts
+        then forall (fn (t,s) => typeCheck spec t s) (zip tms sorts)
+        else ferr "Tupleterm mismatch" []
+    | typeCheck spec (AbsTerm (Name (n,_,s), tm)) (AbsSort (ns,sort)) =
+    if s = ns
+        then typeCheck spec tm sort
+        else ferr "The name $ has the sort $ but $ was expected."
+             [n, s, ns]
+    | typeCheck spec (SymTerm (Symbol (n, s, b), tm)) (BaseSort sort) =
+        if sort = b
+            then typeCheck spec tm s
+            else ferr "The symbol $ has the return type of $ but $ was expected" [n, b, sort]
+    | typeCheck spec tm st =
+        ferr "The term '$' is expected to have the sort '$', but inferred '$'."
+            ["", sortToString st, sortToString $ inferSort spec tm]
+
+  and inferSort spec (NameTerm (Name (_,_,s))) = NameSort s
+    | inferSort spec (VarTerm (perm, Variable (n,s,ps))) = s
+    | inferSort spec (TupleTerm tms) =
+        TupleSort (map (inferSort spec) tms)
+    | inferSort spec (AbsTerm (Name (_,_,s), tm)) =
+        AbsSort (s, inferSort spec tm)
+    | inferSort spec (SymTerm (Symbol (n, s, b), tm)) =
+    let
+      val () = typeCheck spec tm s
+    in
+      BaseSort b
+    end
+
+
+  fun checkAstTermToTerm spec (AstName x) =
+     NameTerm (checkName spec x)
+    | checkAstTermToTerm spec (AstAbs (x, astTerm)) =
+    AbsTerm (checkName spec x, checkAstTermToTerm spec astTerm)
+    | checkAstTermToTerm spec (AstVarTerm (astPerm, varName)) =
+    VarTerm (checkAstPermToPerm spec astPerm,
+             checkVar spec varName)
+    | checkAstTermToTerm spec (AstTuple astTerms) =
+    TupleTerm (map (checkAstTermToTerm spec) astTerms)
+    | checkAstTermToTerm spec (AstSym (name, tmsAst)) =
+    let
+      val sym = checkSym spec name
+      val Symbol (_,_,bs) = sym
+      val t = case tmsAst of
+                   [] => SymTerm (sym, TupleTerm [])
+                 | [astT] => SymTerm (sym, checkAstTermToTerm spec astT)
+                 | astTerms => SymTerm (sym, TupleTerm (map (checkAstTermToTerm spec) astTerms))
+      val _ = typeCheck spec t (BaseSort bs)
+    in
+      t
+    end
+
+  (*
+   * TODO:
+   * report erors in file positions
+   *)
   fun astNodeToSpecNode (AstNameSortDecl s) spec =
     (case (List.find (fn (SpecNameSort a) => (s = a)
                       | (SpecBaseSort b) => (s = b)
@@ -657,9 +741,9 @@ struct
           | NONE => ferr "The sort $ is not a name sort or it has not been declared." [sort]
       )
 
-    | astNodeToSpecNode (AstVarDecl (name, n, sort)) spec = 
+    | astNodeToSpecNode (AstVarDecl (name, n, sort)) spec =
     let
-      val p = List.foldr (fn ((m,nn), ps) => 
+      val p = List.foldr (fn ((m,nn), ps) =>
             case m of
                  AddNameToVar => psetAddName (checkName spec nn) ps
                | RemNameToVar => psetRemName (checkName spec nn) ps
@@ -671,14 +755,36 @@ struct
     end
     | astNodeToSpecNode (AstSymDecl (name, sort, baseSort)) spec =
     SpecSym $
-        Symbol (name, 
+        Symbol (name,
                 checkAstSortToSort spec sort,
                 checkBaseSort spec baseSort)
+    | astNodeToSpecNode (AstTermDecl t) spec =
+    let
+      val tm = checkAstTermToTerm spec t
+      val s = inferSort spec tm
+    in
+      case s of
+           BaseSort _ => SpecTerm tm
+         | _ => ferr "A term must have a base type, but found $."
+                     [sortToString s]
+    end
+    | astNodeToSpecNode (AstRewriteDecl (astS, astT)) spec =
+    let
+      val s = checkAstTermToTerm spec astS
+      val t = checkAstTermToTerm spec astT
+      val sortA = inferSort spec s
+      val sortB = inferSort spec t
+    in
+      if sortA = sortB
+      (* TODO: there must be more checks, the names and vars of left
+       * handside should be included on the right hand side *)
+        then SpecRewrite $ RewriteRule (s,t)
+        else ferr "Sort mismatch in a rewrite rule: '$' does not match '$'" [sortToString sortA, sortToString sortB]
+    end
+
     | astNodeToSpecNode _ _ = SpecNameSort ""
     (*
     | astNodeToSpecNode (AstPredDecl s) spec = error "AstPredDecl"
-    | astNodeToSpecNode (AstTermDecl s) spec = error "AstTermDecl"
-    | astNodeToSpecNode (AstRewriteDecl s) spec = error "AstRewriteDecl"
     | astNodeToSpecNode (AstSOSDecl s) spec = error "AstSOSDecl"
     *)
 
@@ -689,10 +795,11 @@ struct
 
   fun astToSpec ast = astToSpec' ast []
 
-
   fun test () =
   let
-    val ast = (readSpecFromFile "test.pnl")
+    (* val file = "test.pnl" *)
+    val file = "lam.pnl"
+    val ast = readSpecFromFile file
     val spec = astToSpec ast
     val _ = PolyML.print ast
     val _ = PolyML.print spec
@@ -700,9 +807,7 @@ struct
     ()
   end
 
-
   (* fun astToSpec  *)
-
 end;
 
 
