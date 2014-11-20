@@ -225,20 +225,75 @@ struct
     = FinNameSet of name list
     | PNameSet of pset
 
-  (* fun nsUnion  *)
+
+  fun newNameFor (Name (n,pol,s)) (FinNameSet names) =
+    let
+      val n' = Name (n^"'",pol,s)
+    in
+      if member n' names
+          then newNameFor n' (FinNameSet names)
+          else n'
+    end
+    | newNameFor (Name (n,pol,s)) (PNameSet (PSet (aset,bset))) =
+        newNameFor (Name (n,NameRight,s)) (FinNameSet bset)
+
 
   fun fa (NameTerm n) = FinNameSet [n]
-    | fa (VarTerm (p, Variable (_,_,pset))) = PNameSet (pAppPSet p pset)
+    | fa (VarTerm (p,Variable (_,_,pset))) = PNameSet (pAppPSet p pset)
     | fa (SymTerm (_,t)) = fa t
     | fa (AbsTerm (n,t)) = fa t
     | fa (TupleTerm tms) = Err.error "unimplemented tms"
 
+  fun memberPS name (PSet (aset,bset)) =
+    case name of
+         Name (_,NameLeft,_) => not (member name aset)
+       | _ => member name bset
+
+  fun memberNS name (FinNameSet names) = member name names
+    | memberNS name (PNameSet pset) = memberPS name pset
+
+  fun fresh name nameSet = not (memberNS name nameSet)
 
   fun fv (NameTerm n) = []
     | fv (VarTerm (_,v)) = [v]
     | fv (SymTerm (_,t)) = fv t
     | fv (AbsTerm (_,t)) = fv t
     | fv (TupleTerm tms) = flatmap fv tms
+
+  fun subst sigma (NameTerm n) = NameTerm n
+    | subst sigma (SymTerm (s,t)) = SymTerm (s, subst sigma t)
+    | subst sigma (AbsTerm (a,t)) = AbsTerm (a, subst sigma t)
+    | subst sigma (TupleTerm tms) = TupleTerm (map (subst sigma) tms)
+    | subst sigma (VarTerm (pi,var)) =
+        case List.find (fn (v,_) => v = var) sigma of
+             SOME (_,t) => pAppTerm pi t
+           | NONE => (VarTerm (pi,var))
+
+
+  fun permAgreeOn (FinPerm p1) (FinPerm p2) pset =
+  let
+    fun pnames p = flatmap (fn (a,b) => [a,b]) p
+    val names = pnames p1 @ pnames p2
+    val n = filter (fn n => memberPS n pset) names
+  in
+    all (fn n => pApp (FinPerm p1) n = pApp (FinPerm p2) n) names
+  end
+
+  fun alphaEq (t1 as (AbsTerm (a,t))) (AbsTerm (b,t')) =
+        fresh b (fa t1) andalso 
+        getNameSort a = getNameSort b andalso
+        alphaEq (pAppTerm (pSwap (a,b)) t) t'
+    | alphaEq (NameTerm a) (NameTerm b) = a = b
+    | alphaEq (SymTerm (s1,t1)) (SymTerm (s2,t2)) =
+        s1 = s2 andalso alphaEq t1 t2
+    | alphaEq (TupleTerm t1) (TupleTerm t2) =
+        length t1 = length t2 andalso
+        all (uncurry alphaEq) (zip t1 t2)
+    | alphaEq (VarTerm (p1,v1)) (VarTerm (p2,v2)) =
+        v1 = v2 andalso permAgreeOn p1 p2 (getPSet v1)
+    | alphaEq _ _ = false
+
+  (* fun unify  *)
 
 
   structure P = Parser(ParserStreamIO)
@@ -813,7 +868,6 @@ struct
     ()
   end
 
-  (* fun astToSpec  *)
 end;
 
 
