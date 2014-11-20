@@ -174,6 +174,9 @@ struct
         then (PSet (a::aset,bset))
         else (PSet (aset, remove a bset))
 
+  fun psetUnion (PSet (aset1,bset1)) (PSet (aset2,bset2)) =
+    PSet (intersection aset1 aset2, bset1 @ bset2)
+
   fun psetSwapName (a,b) pset =
     case (psetMember a pset, psetMember b pset) of
          (true,true)   => pset
@@ -226,6 +229,16 @@ struct
     | PNameSet of pset
 
 
+  fun nameSetUnion (FinNameSet aset) (FinNameSet bset) =
+    FinNameSet (aset @ bset)
+    | nameSetUnion (FinNameSet aset) (PNameSet pset) =
+    PNameSet $ List.foldr (fn (a,ps) => psetAddName a ps) pset aset
+    | nameSetUnion (PNameSet pset) (FinNameSet aset) =
+    PNameSet $ List.foldr (fn (a,ps) => psetAddName a ps) pset aset
+    | nameSetUnion (PNameSet pset1) (PNameSet pset2) =
+    PNameSet $ psetUnion pset1 pset2
+
+
   fun newNameFor (Name (n,pol,s)) (FinNameSet names) =
     let
       val n' = Name (n^"'",pol,s)
@@ -242,15 +255,13 @@ struct
     | fa (VarTerm (p,Variable (_,_,pset))) = PNameSet (pAppPSet p pset)
     | fa (SymTerm (_,t)) = fa t
     | fa (AbsTerm (n,t)) = fa t
-    | fa (TupleTerm tms) = Err.error "unimplemented tms"
-
-  fun memberPS name (PSet (aset,bset)) =
-    case name of
-         Name (_,NameLeft,_) => not (member name aset)
-       | _ => member name bset
+    | fa (TupleTerm tms) =
+        List.foldr
+            (fn (ns,bns) => nameSetUnion ns bns)
+            (FinNameSet []) (map fa tms)
 
   fun memberNS name (FinNameSet names) = member name names
-    | memberNS name (PNameSet pset) = memberPS name pset
+    | memberNS name (PNameSet pset) = psetMember name pset
 
   fun fresh name nameSet = not (memberNS name nameSet)
 
@@ -274,13 +285,13 @@ struct
   let
     fun pnames p = flatmap (fn (a,b) => [a,b]) p
     val names = pnames p1 @ pnames p2
-    val n = filter (fn n => memberPS n pset) names
+    val n = filter (fn n => psetMember n pset) names
   in
     all (fn n => pApp (FinPerm p1) n = pApp (FinPerm p2) n) names
   end
 
   fun alphaEq (t1 as (AbsTerm (a,t))) (AbsTerm (b,t')) =
-        fresh b (fa t1) andalso 
+        fresh b (fa t1) andalso
         getNameSort a = getNameSort b andalso
         alphaEq (pAppTerm (pSwap (a,b)) t) t'
     | alphaEq (NameTerm a) (NameTerm b) = a = b
