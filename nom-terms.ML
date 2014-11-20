@@ -234,6 +234,11 @@ struct
     | fa (TupleTerm tms) = Err.error "unimplemented tms"
 
 
+  fun fv (NameTerm n) = []
+    | fv (VarTerm (_,v)) = [v]
+    | fv (SymTerm (_,t)) = fv t
+    | fv (AbsTerm (_,t)) = fv t
+    | fv (TupleTerm tms) = flatmap fv tms
 
 
   structure P = Parser(ParserStreamIO)
@@ -681,6 +686,7 @@ struct
     | typeCheck spec tm st =
         ferr "The term '$' is expected to have the sort '$', but inferred '$'."
             ["", sortToString st, sortToString $ inferSort spec tm]
+
 
   and inferSort spec (NameTerm (Name (_,_,s))) = NameSort s
     | inferSort spec (VarTerm (perm, Variable (n,s,ps))) = s
