@@ -134,6 +134,7 @@ struct
   val pId = FinPerm []
   fun pCompose (FinPerm p1) (FinPerm p2) = (FinPerm (p1 @ p2))
   fun pSwap (a,b) = FinPerm [(a,b)]
+  fun pInverse (FinPerm p) = FinPerm (reverse p)
 
   fun swapName (a,b) c =
     if a = c then b
@@ -142,6 +143,10 @@ struct
 
   fun pApp (FinPerm p) n =
     List.foldr (fn (s, c) => swapName s c) n p
+
+  fun nontriv (FinPerm p) =
+    flatmap (fn (a,b) => [a,b]) p |>
+    filter (fn a => not (a = pApp (FinPerm p) a))
 
   fun pIsWellSorted' [] = RIGHT ()
     | pIsWellSorted' ((a,b)::rest) =
@@ -304,7 +309,49 @@ struct
         v1 = v2 andalso permAgreeOn p1 p2 (getPSet v1)
     | alphaEq _ _ = false
 
-  (* fun unify  *)
+
+  datatype unification_el
+    = UnifEq of term * term
+    | UnifFresh of name * term
+
+  type unification_problem = unification_el list
+
+  fun uni subst [] = SOME subst
+    | uni subst (UnifEq (NameTerm a, NameTerm b)::rest)
+    = if a = b then uni subst rest else NONE
+    | uni subst (UnifEq (SymTerm (f,t), SymTerm (g,t'))::rest) =
+    if f = g then uni subst ((UnifEq (t,t'))::rest) else NONE
+    | uni subst (UnifEq (TupleTerm t, TupleTerm t')::rest) =
+    if length t = length t'
+        then uni subst ((map UnifEq (zip t t'))@rest)
+        else NONE
+    | uni subst (UnifEq (AbsTerm (a,t), AbsTerm (b,t'))::rest) =
+    let
+      val c = newNameFor a (nameSetUnion (fa t) (fa t'))
+      val tt = pAppTerm (pSwap (c,a)) t
+      val tt' = pAppTerm (pSwap (c,b)) t'
+    in
+      uni subst (UnifEq (tt,tt')::rest)
+    end
+    | uni subst (UnifEq (VarTerm (pi,x), VarTerm (pi',x'))::rest) =
+        if x = x'
+            then
+              let
+                fun intersect names ps =
+                  filter (fn a => psetMember a ps) names
+                val p = pCompose (pInverse pi) pi'
+                val names = nontriv p
+                val ps = getPSet x
+                val fnames = intersect names ps
+                val freshness = map (fn n => UnifFresh (n,VarTerm (pId,x))) fnames
+              in
+                uni subst (freshness@rest)
+              end
+        else NONE
+    (* | uni subst ( *)
+
+
+  fun unify t1 t2 = uni [] [UnifEq (t1, t2)]
 
 
   structure P = Parser(ParserStreamIO)
