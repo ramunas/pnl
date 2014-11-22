@@ -1,0 +1,30 @@
+type lam
+nametype v
+
+fn lam : ([v]lam) => lam
+fn var : v => lam
+fn app : (lam,lam) => lam
+
+fn subst : ([v]lam, lam) => lam
+
+name x : v
+name y : v
+
+var `X : lam
+var `Y : lam
+var `Z - y : lam
+
+var `U : v
+
+rw subst([x]var(x),`X) ==> `X
+rw subst([y]var(x),`X) ==> var(x)
+
+rw subst([x]app(`Y, `Z), `X) ==>
+    app(subst([x]`Y, `X), subst([x]`Z, `X))
+
+rw subst([x]lam([y]`Y), `Z) ==>
+    lam([y]subst([x]`Y, `Z))
+
+
+# vim:ft=pnl:
+
