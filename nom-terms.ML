@@ -243,6 +243,19 @@ struct
     | nameSetUnion (PNameSet pset1) (PNameSet pset2) =
     PNameSet $ psetUnion pset1 pset2
 
+  fun nameSetMinus (FinNameSet aset) (FinNameSet bset) =
+    FinNameSet $ minus aset bset
+    | nameSetMinus (FinNameSet cset) (PNameSet (PSet (aset,bset))) =
+    FinNameSet $
+      filter (fn c => if isLeft c 
+                          then member c aset 
+                          else not (member c bset)) cset
+    | nameSetMinus (PNameSet pset) (FinNameSet cset) =
+        PNameSet $
+            List.foldr (fn (c, ps) => psetRemName c ps) pset cset 
+    | nameSetMinus (PNameSet (PSet (aset1,bset1))) (PNameSet (PSet (aset2,bset2))) =
+        PNameSet $ PSet (minus aset2 aset1, minus bset1 bset2)
+
 
   fun newNameFor (Name (n,pol,s)) (FinNameSet names) =
     let
@@ -316,42 +329,92 @@ struct
 
   type unification_problem = unification_el list
 
-  fun uni subst [] = SOME subst
-    | uni subst (UnifEq (NameTerm a, NameTerm b)::rest)
-    = if a = b then uni subst rest else NONE
-    | uni subst (UnifEq (SymTerm (f,t), SymTerm (g,t'))::rest) =
-    if f = g then uni subst ((UnifEq (t,t'))::rest) else NONE
-    | uni subst (UnifEq (TupleTerm t, TupleTerm t')::rest) =
-    if length t = length t'
-        then uni subst ((map UnifEq (zip t t'))@rest)
-        else NONE
-    | uni subst (UnifEq (AbsTerm (a,t), AbsTerm (b,t'))::rest) =
+  exception NoMatch
+
+  val rules = [
+    fn (UnifEq (NameTerm a, NameTerm b)) =>
+      if a = b then ([],[]) else raise NoMatch
+        | _ => raise NoMatch ,
+
+    fn (UnifEq (SymTerm (f,t), SymTerm (g,t'))) =>
+        if f = g then ([], [UnifEq (t,t')]) else raise NoMatch
+        | _ => raise NoMatch ,
+
+    fn (UnifEq (TupleTerm t, TupleTerm t')) =>
+        if length t = length t'
+            then ([], (map UnifEq (zip t t')))
+            else raise NoMatch
+        | _ => raise NoMatch ,
+
+    fn (UnifEq (AbsTerm (a,t), AbsTerm (b,t'))) =>
+      let
+        val c = newNameFor a (nameSetUnion (fa t) (fa t'))
+        val tt = pAppTerm (pSwap (c,a)) t
+        val tt' = pAppTerm (pSwap (c,b)) t'
+      in
+        ([], [UnifEq (tt,tt')])
+      end
+        | _ => raise NoMatch ,
+
+    fn (UnifEq (VarTerm (pi,x), VarTerm (pi',x'))) =>
+      if x = x'
+        then
+          let
+            fun intersect names ps =
+              filter (fn a => psetMember a ps) names
+            val p = pCompose (pInverse pi) pi'
+            val names = nontriv p
+            val ps = getPSet x
+            val fnames = intersect names ps
+            val freshness =
+              map (fn n => UnifFresh (n,VarTerm (pId,x))) fnames
+          in
+            ([], freshness)
+          end
+        else raise NoMatch
+        | _ => raise NoMatch ,
+
+    fn (UnifEq (t, VarTerm (pi,x))) =>
     let
-      val c = newNameFor a (nameSetUnion (fa t) (fa t'))
-      val tt = pAppTerm (pSwap (c,a)) t
-      val tt' = pAppTerm (pSwap (c,b)) t'
+      val t' = pAppTerm (pInverse pi) t
+      val s = nameSetMinus (fa t') (fa (VarTerm (pId, x)))
     in
-      uni subst (UnifEq (tt,tt')::rest)
+      case s of
+           FinNameSet [] => raise NoMatch
+         | FinNameSet (a::_) => 
+             ([], [UnifFresh (a, t'), UnifEq (t', VarTerm (pId,x))])
+         | _ => error "This case should not occur unif"
     end
-    | uni subst (UnifEq (VarTerm (pi,x), VarTerm (pi',x'))::rest) =
-        if x = x'
-            then
-              let
-                fun intersect names ps =
-                  filter (fn a => psetMember a ps) names
-                val p = pCompose (pInverse pi) pi'
-                val names = nontriv p
-                val ps = getPSet x
-                val fnames = intersect names ps
-                val freshness = map (fn n => UnifFresh (n,VarTerm (pId,x))) fnames
-              in
-                uni subst (freshness@rest)
-              end
-        else NONE
-    (* | uni subst ( *)
+        | _ => raise NoMatch 
+  ]
+
+  fun composeSubst s1 s2 = error ""
+
+  fun applySubstPr subst = error ""
+
+  fun uniRw subst [] = SOME subst
+    | uniRw subst (pr::rest) =
+    let
+      fun applyRule [] = raise NoMatch
+        | applyRule (r::rules) =
+        case pr of
+             UnifEq (t1,t2) => (r (UnifEq(t1,t2))
+                                handle NoMatch =>
+                                (r (UnifEq(t2,t1)) handle NoMatch =>
+                                    applyRule rules))
+          | _ => r pr handle NoMatch => applyRule rules
+    in
+      let 
+        val (subst',prs) = applyRule rules 
+        val s = composeSubst subst subst'
+      in 
+        uniRw s (prs@(applySubstPr s rest))
+      end
+        handle NoMatch => NONE
+    end
 
 
-  fun unify t1 t2 = uni [] [UnifEq (t1, t2)]
+  fun unify t1 t2 = uniRw [] [UnifEq (t1, t2)]
 
 
   structure P = Parser(ParserStreamIO)
