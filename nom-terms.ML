@@ -166,6 +166,10 @@ struct
         then not (Lst.member a aset)
         else member a bset
 
+  fun psetSubset (PSet (aset1, bset1)) (PSet (aset2, bset2)) =
+    all (fn b => member b bset2) bset1 andalso
+    (all (fn a => member a aset1) aset2)
+
   fun remove a aset =
     filter (fn b => not(a = b)) aset
 
@@ -201,6 +205,10 @@ struct
   val makeVar = Variable
   fun getVarSort (Variable (_,s,_)) = s
   fun getPSet (Variable (_,_,p)) = p
+
+
+  fun permShiftVarRemName a x =
+    error "Removing of a name is not implemented"
 
 
   datatype sym
@@ -247,14 +255,24 @@ struct
     FinNameSet $ minus aset bset
     | nameSetMinus (FinNameSet cset) (PNameSet (PSet (aset,bset))) =
     FinNameSet $
-      filter (fn c => if isLeft c 
-                          then member c aset 
+      filter (fn c => if isLeft c
+                          then member c aset
                           else not (member c bset)) cset
     | nameSetMinus (PNameSet pset) (FinNameSet cset) =
         PNameSet $
-            List.foldr (fn (c, ps) => psetRemName c ps) pset cset 
+            List.foldr (fn (c, ps) => psetRemName c ps) pset cset
     | nameSetMinus (PNameSet (PSet (aset1,bset1))) (PNameSet (PSet (aset2,bset2))) =
         PNameSet $ PSet (minus aset2 aset1, minus bset1 bset2)
+
+
+  fun nameSetSubset (FinNameSet aset) (FinNameSet bset) =
+    all (fn a => member a bset) aset
+    | nameSetSubset (FinNameSet aset) (PNameSet pset) =
+    all (fn a => psetMember a pset) aset
+    | nameSetSubset (PNameSet pset) (FinNameSet aset) =
+    false
+    | nameSetSubset (PNameSet pset1) (PNameSet pset2) =
+    psetSubset pset1 pset2
 
 
   fun newNameFor (Name (n,pol,s)) (FinNameSet names) =
@@ -332,20 +350,25 @@ struct
   exception NoMatch
 
   val rules = [
+
+    (* Rule =a *)
     fn (UnifEq (NameTerm a, NameTerm b)) =>
       if a = b then ([],[]) else raise NoMatch
         | _ => raise NoMatch ,
 
+    (* Rule =f *)
     fn (UnifEq (SymTerm (f,t), SymTerm (g,t'))) =>
         if f = g then ([], [UnifEq (t,t')]) else raise NoMatch
         | _ => raise NoMatch ,
 
+    (* Rule =() *)
     fn (UnifEq (TupleTerm t, TupleTerm t')) =>
         if length t = length t'
             then ([], (map UnifEq (zip t t')))
             else raise NoMatch
         | _ => raise NoMatch ,
 
+    (* Rule =[] *)
     fn (UnifEq (AbsTerm (a,t), AbsTerm (b,t'))) =>
       let
         val c = newNameFor a (nameSetUnion (fa t) (fa t'))
@@ -356,6 +379,7 @@ struct
       end
         | _ => raise NoMatch ,
 
+    (* Rule =X *)
     fn (UnifEq (VarTerm (pi,x), VarTerm (pi',x'))) =>
       if x = x'
         then
@@ -374,6 +398,7 @@ struct
         else raise NoMatch
         | _ => raise NoMatch ,
 
+    (* Rule F *)
     fn (UnifEq (t, VarTerm (pi,x))) =>
     let
       val t' = pAppTerm (pInverse pi) t
@@ -381,11 +406,43 @@ struct
     in
       case s of
            FinNameSet [] => raise NoMatch
-         | FinNameSet (a::_) => 
+         | FinNameSet (a::_) =>
              ([], [UnifFresh (a, t'), UnifEq (t', VarTerm (pId,x))])
          | _ => error "This case should not occur unif"
     end
-        | _ => raise NoMatch 
+        | _ => raise NoMatch ,
+
+    (* Rule F# *)
+    fn (UnifFresh (a,t)) =>
+      if fresh a (fa t) then ([],[]) else raise NoMatch
+     | _ => raise NoMatch ,
+
+    (* Rule Ff *)
+    fn (UnifFresh (a, SymTerm (sym,t))) => ([], [UnifFresh (a,t)])
+     | _ => raise NoMatch ,
+
+    (* Rule F() *)
+    fn (UnifFresh (a, TupleTerm tms)) =>
+      ([], map (fn t => UnifFresh (a,t)) tms)
+     | _ => raise NoMatch ,
+
+    (* Rule F[] *)
+    fn (UnifFresh (a, AbsTerm (b,t))) => ([], [UnifFresh (a,t)])
+     | _ => raise NoMatch ,
+
+    (* Rule IE *)
+     (* pi here should be equiv to pId *)
+    fn (UnifEq (t, VarTerm (pi,x))) =>
+      if not (member x (fv t)) andalso
+        nameSetSubset (fa t) (fa (VarTerm (pi,x)))
+        then ([(x,t)], [])
+        else raise NoMatch
+     | _ => raise NoMatch ,
+
+   fn (UnifFresh (a, VarTerm (pi,x))) =>
+     ([(x, permShiftVarRemName a x)], [])
+      | _ => raise NoMatch
+
   ]
 
   fun composeSubst s1 s2 = error ""
@@ -404,10 +461,10 @@ struct
                                     applyRule rules))
           | _ => r pr handle NoMatch => applyRule rules
     in
-      let 
-        val (subst',prs) = applyRule rules 
+      let
+        val (subst',prs) = applyRule rules
         val s = composeSubst subst subst'
-      in 
+      in
         uniRw s (prs@(applySubstPr s rest))
       end
         handle NoMatch => NONE
