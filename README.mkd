@@ -1,4 +1,4 @@
-# PNL (the name is yet to be decided)
+# pnl (the name is yet to be decided)
 
 WIP
 
