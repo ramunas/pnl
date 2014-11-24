@@ -1,4 +1,4 @@
-(* uses pwb/missing *)
+(* uses lib/missing *)
 
 
 signature PRETTY_PRINTER =

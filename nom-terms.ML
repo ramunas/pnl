@@ -1,5 +1,7 @@
 (**
-  uses pwb/missing, pwb/parser, pwb/missing-io
+  uses lib/missing,
+       lib/parser,
+       lib/missing-io
   *)
 
 signature NOM_TERM =
