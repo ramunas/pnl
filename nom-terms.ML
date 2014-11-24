@@ -207,10 +207,6 @@ struct
   fun getPSet (Variable (_,_,p)) = p
 
 
-  fun permShiftVarRemName a x =
-    error "Removing of a name is not implemented"
-
-
   datatype sym
     = Symbol of string * sort * base_sort
 
@@ -236,6 +232,11 @@ struct
     | pAppTerm p (TupleTerm args) = TupleTerm (map (pAppTerm p) args)
     | pAppTerm p (SymTerm (sym,term)) = SymTerm (sym, pAppTerm p term)
     | pAppTerm p (AbsTerm (name, term)) = AbsTerm (pApp p name, pAppTerm p term)
+
+
+  fun permShiftVarRemName a (Variable (n,s,p)) =
+    VarTerm (pId, Variable (n,s,psetRemName a p))
+
 
   datatype nameset
     = FinNameSet of name list
@@ -442,7 +443,6 @@ struct
    fn (UnifFresh (a, VarTerm (pi,x))) =>
      ([(x, permShiftVarRemName a x)], [])
       | _ => raise NoMatch
-
   ]
 
   fun composeSubst s1 s2 = error ""
@@ -515,6 +515,7 @@ struct
     | AstTermDecl of ast_term
     | AstRewriteDecl of ast_term * ast_term
     | AstSOSDecl of (ast_term * ast_term) list
+    | AstRewriteStmtDecl of ast_term
 
   type ast = ast_node list
 
@@ -687,17 +688,14 @@ struct
     </choice/>
         parseAbsTerm ()
 
-  (* TODO: add mixfix
-   * to resolve this, one would like to have a sym list,
-   * and a var list *)
   and parseSymTerm () =
     ws () >>
     identifier () >>= (fn i =>
-    ws () >> str "(" >> ws () >>
-    (parseTerm () </sepby/> (ws () >> str ",")) >>= (fn tms =>
+    ws () >> str "(" >> nofail (ws () >>
+    (parseTerm () </sepby/> (ws () >> str "," >> ws ())) >>= (fn tms =>
     ws () >> str ")" >>
     return (AstSym (i, tms))
-    ))
+    )))
 
   and parseAbsTerm () =
     ws () >> str "[" >> ws () >>
@@ -748,6 +746,14 @@ struct
     return (AstRewriteDecl (t1, t2))
     )))
 
+
+  fun parseRewriteStatementDecl () =
+    ws () >>
+    str "rewrite" >>
+    ws1 () >> nofail (
+    parseTerm () >>= (fn t => return (PolyML.print (AstRewriteStmtDecl t))))
+
+
   fun parseSOSDecl () =
     ws () >>
     str "sos" >>
@@ -772,6 +778,8 @@ struct
             parseTermDecl ()
         </choice/>
             parseRewriteDecl ()
+        </choice/>
+            parseRewriteStatementDecl ()
         </choice/>
             parseSOSDecl ()
     ) >>= (fn r => ws () >> eof r)
@@ -805,9 +813,10 @@ struct
     (* | SpecPred of predicate *)
     | SpecTerm of term
     | SpecRewrite of rewrite_rule
+    | SpecRewriteStmt of term
     | SpecSOS of sos_rule
 
-  type context = spec_node list
+  type spec = spec_node list
 
   val emptyCont = []
 
@@ -917,7 +926,7 @@ struct
             then typeCheck spec tm s
             else ferr "The symbol $ has the return type of $ but $ was expected" [n, b, sort]
     | typeCheck spec tm st =
-        ferr "The term '$' is expected to have the sort '$', but inferred '$'."
+        ferr "The term '$'(TODO) is expected to have the sort '$', but inferred '$'."
             ["", sortToString st, sortToString $ inferSort spec tm]
 
 
@@ -1020,6 +1029,9 @@ struct
         then SpecRewrite $ RewriteRule (s,t)
         else ferr "Sort mismatch in a rewrite rule: '$' does not match '$'" [sortToString sortA, sortToString sortB]
     end
+
+    | astNodeToSpecNode (AstRewriteStmtDecl ast) spec =
+        SpecRewriteStmt (checkAstTermToTerm spec ast)
 
     | astNodeToSpecNode _ _ = SpecNameSort ""
     (*

@@ -16,6 +16,7 @@ var `Z - y : lam
 
 var `U : v
 
+
 rw subst([x]var(x),`X) ==> `X
 rw subst([y]var(x),`X) ==> var(x)
 
@@ -24,6 +25,9 @@ rw subst([x]app(`Y, `Z), `X) ==>
 
 rw subst([x]lam([y]`Y), `Z) ==>
     lam([y]subst([x]`Y, `Z))
+
+
+rewrite subst([x]var(x), var(y) )
 
 
 # vim:ft=pnl:
