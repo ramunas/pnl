@@ -26,3 +26,10 @@ deciding the mentioned semantics.
 or see ./compile.sh
 
 
+## Pwb
+
+Note that pnl is a fork of Psi-Calculi Workbench [1]. It will
+eventually replace most of it.
+
+
+[1] : https://github.com/PsiCalculiWorkbench/PsiCalculiWorkbench
