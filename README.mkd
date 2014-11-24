@@ -9,7 +9,7 @@ straightforward modeling of languages with binding constructs such as
 perhaps every known programming language, lambda calculus, various
 calculi for concurrency, etc.
 
-pnl is a tool inspired by Maude that is based on PNL.  It allows
+pnl is a tool inspired by Maude and based on PNL.  It allows
 modeling of programming languages using PNL logic. It will allow
 expressing rewriting rule systems, structural operational semantics,
 and will use sate of the art constraint solvers as a backend for
