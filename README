@@ -1,11 +1,28 @@
+# PNL (the name is yet to be decided)
 
-cd PsiWorkBench-yyyy.dd
-export PSI_WORKBENCH_HOME=`pwd`
-export PATH="$PATH:`pwd`/tools"
-pwb sml @nom-terms.ML
+WIP
 
-or
+PNL stands for Permissive Nominal Logic put forward by Dowek and
+Gabbay. It is a first-order logic in its core, however it extends the
+first order terms with binding constructs. This allows for a
+straightforward modeling of languages with binding constructs such as
+perhaps every known programming language, lambda calculus, various
+calculi for concurrency, etc.
 
-./compile.sh
+pnl is a tool inspired by Maude that is based on PNL.  It allows
+modeling of programming languages using PNL logic. It will allow
+expressing rewriting rule systems, structural operational semantics,
+and will use sate of the art constraint solvers as a backend for
+deciding the mentioned semantics.
+
+
+## Running example (not much to see yet)
+
+    $ cd <pnl>
+    $ export PSI_WORKBENCH_HOME=`pwd`
+    $ export PATH="$PATH:`pwd`/tools"
+    $ pwb sml @nom-terms.ML
+
+or see ./compile.sh
 
 
