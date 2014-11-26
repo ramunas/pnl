@@ -29,6 +29,9 @@ rw subst([x]lam([y]`Y), `Z) ==>
 
 rewrite subst([x]var(x), var(y) )
 
+unify `X == `X
+unify `X == lam([x]`Y)
+
 
 # vim:ft=pnl:
 

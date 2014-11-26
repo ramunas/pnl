@@ -230,7 +230,7 @@ struct
   val absTerm   = AbsTerm
 
   fun pAppTerm p (NameTerm n) = NameTerm (pApp p n)
-    | pAppTerm p (VarTerm n) = Err.error "Perm on var term"
+    | pAppTerm p (VarTerm (p',v)) = VarTerm (pCompose p p',v)
     | pAppTerm p (TupleTerm args) = TupleTerm (map (pAppTerm p) args)
     | pAppTerm p (SymTerm (sym,term)) = SymTerm (sym, pAppTerm p term)
     | pAppTerm p (AbsTerm (name, term)) = AbsTerm (pApp p name, pAppTerm p term)
@@ -265,7 +265,7 @@ struct
         PNameSet $
             List.foldr (fn (c, ps) => psetRemName c ps) pset cset
     | nameSetMinus (PNameSet (PSet (aset1,bset1))) (PNameSet (PSet (aset2,bset2))) =
-        PNameSet $ PSet (minus aset2 aset1, minus bset1 bset2)
+    FinNameSet $ (minus aset2 aset1) @ (minus bset1 bset2)
 
 
   fun nameSetSubset (FinNameSet aset) (FinNameSet bset) =
@@ -405,13 +405,14 @@ struct
     fn (UnifEq (t, VarTerm (pi,x))) =>
     let
       val t' = pAppTerm (pInverse pi) t
+      val _ = PolyML.print (fa t', (fa (VarTerm (pId, x))))
       val s = nameSetMinus (fa t') (fa (VarTerm (pId, x)))
     in
       case s of
            FinNameSet [] => raise NoMatch
          | FinNameSet (a::_) =>
              ([], [UnifFresh (a, t'), UnifEq (t', VarTerm (pId,x))])
-         | _ => error "This case should not occur unif"
+         | _ => (PolyML.print s; error "This case should not occur unif")
     end
         | _ => raise NoMatch ,
 
@@ -447,9 +448,22 @@ struct
       | _ => raise NoMatch
   ]
 
-  fun composeSubst s1 s2 = error ""
+  fun composeSubst s1 s2 = 
+  let
+    val s = map (fn (v,t) => (v, subst s1 t)) s2
+    val s' = filter (fn (v,t) => not (member v (fst (unzip s2)))) s1
+  in
+    s' @ s
+  end
+    (*
+    * [X := t] r
+    * [X := t] [X := t'] r = [X := [X := t] t'] r
+    * [X := t] [Y := t'] r = [X := t, Y := [X := t] t'] r
+    *)
 
-  fun applySubstPr subst = error ""
+  fun applySubstPr sigma pr =
+    pr |> map (fn UnifEq (t1,t2) => UnifEq (subst sigma t1, subst sigma t2)
+                | UnifFresh (a,t) => UnifFresh (a, subst sigma t))
 
   fun uniRw subst [] = SOME subst
     | uniRw subst (pr::rest) =
@@ -518,6 +532,7 @@ struct
     | AstRewriteDecl of ast_term * ast_term
     | AstSOSDecl of (ast_term * ast_term) list
     | AstRewriteStmtDecl of ast_term
+    | AstUnifyStmtDecl of ast_term * ast_term
 
   type ast = ast_node list
 
@@ -753,8 +768,16 @@ struct
     ws () >>
     str "rewrite" >>
     ws1 () >> nofail (
-    parseTerm () >>= (fn t => return (PolyML.print (AstRewriteStmtDecl t))))
+    parseTerm () >>= (fn t => return (AstRewriteStmtDecl t)))
 
+  fun parseUnifyStmtDecl () =
+    ws () >>
+    str "unify" >>
+    ws1 () >> nofail (
+    parseTerm () >>= (fn t1 =>
+    ws () >> str "==" >> ws () >>
+    parseTerm () >>= (fn t2 =>
+    return (AstUnifyStmtDecl (t1,t2)))))
 
   fun parseSOSDecl () =
     ws () >>
@@ -782,6 +805,8 @@ struct
             parseRewriteDecl ()
         </choice/>
             parseRewriteStatementDecl ()
+        </choice/>
+            parseUnifyStmtDecl ()
         </choice/>
             parseSOSDecl ()
     ) >>= (fn r => ws () >> eof r)
@@ -816,6 +841,7 @@ struct
     | SpecTerm of term
     | SpecRewrite of rewrite_rule
     | SpecRewriteStmt of term
+    | SpecUnifyStmt of term * term
     | SpecSOS of sos_rule
 
   type spec = spec_node list
@@ -1035,6 +1061,9 @@ struct
     | astNodeToSpecNode (AstRewriteStmtDecl ast) spec =
         SpecRewriteStmt (checkAstTermToTerm spec ast)
 
+    | astNodeToSpecNode (AstUnifyStmtDecl (ast1,ast2)) spec =
+        SpecUnifyStmt (checkAstTermToTerm spec ast1, checkAstTermToTerm spec ast2)
+
     | astNodeToSpecNode _ _ = SpecNameSort ""
     (*
     | astNodeToSpecNode (AstPredDecl s) spec = error "AstPredDecl"
@@ -1048,6 +1077,14 @@ struct
 
   fun astToSpec ast = astToSpec' ast []
 
+
+  fun specExecuteStmts spec =
+    spec |> forall
+    (fn SpecUnifyStmt (t1,t2) =>
+        (PolyML.print (unify t1 t2); ())
+      | SpecRewriteStmt t => () (*error "stmt: Not implemented yet"*)
+      | _ => ())
+
   fun test () =
   let
     (* val file = "test.pnl" *)
@@ -1056,6 +1093,7 @@ struct
     val spec = astToSpec ast
     val _ = PolyML.print ast
     val _ = PolyML.print spec
+    val _ = specExecuteStmts spec
   in
     ()
   end
