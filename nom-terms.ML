@@ -86,6 +86,18 @@ structure NomTerm : NOM_TERM =
 struct
   open Missing
 
+  fun fmt' ([], _) = []
+    | fmt' (fmts, []) = fmts
+    | fmt' (f::fmts, v::vals) =
+    if f = "$"
+        then v::(fmt' (fmts, vals))
+        else f::(fmt' (fmts, v::vals))
+
+  fun fmt fm vals =
+    String.concat $
+        fmt' (map Char.toString (String.explode fm), vals)
+
+
   type base_sort = string
   type name_sort = string
 
@@ -218,13 +230,13 @@ struct
 
   datatype term
     = NameTerm of name
-    | VarTerm of name_perm * variable
+    | VarTerm of name_perm * (name list) * variable
     | TupleTerm of term list
     | SymTerm of sym * term
     | AbsTerm of name * term
 
   val nameTerm  = NameTerm
-  fun varTerm v = VarTerm (pId, v)
+  fun varTerm v = VarTerm (pId, [], v)
   val tupleTerm = TupleTerm
   val symTerm   = SymTerm
   val absTerm   = AbsTerm
@@ -238,7 +250,8 @@ struct
   fun symToString (Symbol (s,_,_)) = s
 
   fun termToString (NameTerm n) = nameToString n
-    | termToString (VarTerm (pi,v)) = "`" ^ (permToString pi) ^ (varToString v)
+    | termToString (VarTerm (pi,names,v)) =
+        "`" ^ (permToString pi) ^ (String.concat $ map (fn x => fmt "(-$)" [nameToString x]) names)  ^ (varToString v)
     | termToString (TupleTerm tms) =
         "(" ^ (join ", " (map termToString tms)) ^ ")"
     | termToString (SymTerm (sym, tm)) =
@@ -247,14 +260,11 @@ struct
         "["^(nameToString a)^"]"^(termToString tm)
 
   fun pAppTerm p (NameTerm n) = NameTerm (pApp p n)
-    | pAppTerm p (VarTerm (p',v)) = VarTerm (pCompose p p',v)
+    | pAppTerm p (VarTerm (p',n,v)) = VarTerm (pCompose p p',n,v)
     | pAppTerm p (TupleTerm args) = TupleTerm (map (pAppTerm p) args)
     | pAppTerm p (SymTerm (sym,term)) = SymTerm (sym, pAppTerm p term)
     | pAppTerm p (AbsTerm (name, term)) = AbsTerm (pApp p name, pAppTerm p term)
 
-
-  fun permShiftVarRemName a (Variable (n,s,p)) =
-    VarTerm (pId, Variable (n,s,psetRemName a p))
 
 
   datatype nameset
@@ -306,9 +316,11 @@ struct
     | newNameFor (Name (n,pol,s)) (PNameSet (PSet (aset,bset))) =
         newNameFor (Name (n,NameRight,s)) (FinNameSet bset)
 
+  fun psetRemNames names pset =
+    List.foldr (fn (n,p) => psetRemName n p) pset names
 
   fun fa (NameTerm n) = FinNameSet [n]
-    | fa (VarTerm (p,Variable (_,_,pset))) = PNameSet (pAppPSet p pset)
+    | fa (VarTerm (p,n,Variable (_,_,pset))) = PNameSet (pAppPSet p (psetRemNames n pset))
     | fa (SymTerm (_,t)) = fa t
     | fa (AbsTerm (n,t)) = fa t
     | fa (TupleTerm tms) =
@@ -322,7 +334,7 @@ struct
   fun fresh name nameSet = not (memberNS name nameSet)
 
   fun fv (NameTerm n) = []
-    | fv (VarTerm (_,v)) = [v]
+    | fv (VarTerm (_,_,v)) = [v]
     | fv (SymTerm (_,t)) = fv t
     | fv (AbsTerm (_,t)) = fv t
     | fv (TupleTerm tms) = flatmap fv tms
@@ -331,10 +343,16 @@ struct
     | subst sigma (SymTerm (s,t)) = SymTerm (s, subst sigma t)
     | subst sigma (AbsTerm (a,t)) = AbsTerm (a, subst sigma t)
     | subst sigma (TupleTerm tms) = TupleTerm (map (subst sigma) tms)
-    | subst sigma (VarTerm (pi,var)) =
+    | subst sigma (VarTerm (pi,ns,var)) =
         case List.find (fn (v,_) => v = var) sigma of
-             SOME (_,t) => pAppTerm pi t
-           | NONE => (VarTerm (pi,var))
+             SOME (_,t) =>
+                (case t of
+                      VarTerm (pi',ns',v) => pAppTerm pi (VarTerm (pi',ns'@ns,v))
+                    | _ => if length ns = 0
+                        then pAppTerm pi t
+                        else error "Should not happen: invariant broken, substituting non-variable term for a variable with nontrivial shift permutation"
+                )
+           | NONE => (VarTerm (pi,ns,var))
 
 
   fun permAgreeOn (FinPerm p1) (FinPerm p2) pset =
@@ -356,8 +374,10 @@ struct
     | alphaEq (TupleTerm t1) (TupleTerm t2) =
         length t1 = length t2 andalso
         all (uncurry alphaEq) (zip t1 t2)
-    | alphaEq (VarTerm (p1,v1)) (VarTerm (p2,v2)) =
-        v1 = v2 andalso permAgreeOn p1 p2 (getPSet v1)
+    | alphaEq (VarTerm (p1,ns1,v1)) (VarTerm (p2,ns2,v2)) =
+        v1 = v2 andalso
+        ns1 = ns2 andalso (* FIXME: define equality between shift perms, and psets *)
+        permAgreeOn p1 p2 (getPSet v1)
     | alphaEq _ _ = false
 
 
@@ -400,8 +420,9 @@ struct
         | _ => raise NoMatch ,
 
     (* Rule =X *)
-    fn (UnifEq (VarTerm (pi,x), VarTerm (pi',x'))) =>
-      if x = x'
+    fn (UnifEq (VarTerm (pi,ns,x), VarTerm (pi',ns',x'))) =>
+      (* This tantamounts to the finiteness check *)
+      if x = x' andalso ns = ns' (* FIXME: define equality between shift perms *)
         then
           let
             fun intersect names ps =
@@ -411,7 +432,7 @@ struct
             val ps = getPSet x
             val fnames = intersect names ps
             val freshness =
-              map (fn n => UnifFresh (n,VarTerm (pId,x))) fnames
+              map (fn n => UnifFresh (n,VarTerm (pId,ns,x))) fnames
           in
             ([], freshness)
           end
@@ -419,16 +440,16 @@ struct
         | _ => raise NoMatch ,
 
     (* Rule F *)
-    fn (UnifEq (t, VarTerm (pi,x))) =>
+    fn (UnifEq (t, VarTerm (pi,ns,x))) =>
     let
       val t' = pAppTerm (pInverse pi) t
-      val _ = PolyML.print (fa t', (fa (VarTerm (pId, x))))
-      val s = nameSetMinus (fa t') (fa (VarTerm (pId, x)))
+      (* val _ = PolyML.print (fa t', (fa (VarTerm (pId, ns, x)))) *)
+      val s = nameSetMinus (fa t') (fa (VarTerm (pId, ns, x)))
     in
       case s of
            FinNameSet [] => raise NoMatch
          | FinNameSet (a::_) =>
-             ([], [UnifFresh (a, t'), UnifEq (t', VarTerm (pId,x))])
+             ([], [UnifFresh (a, t'), UnifEq (t', VarTerm (pId,ns,x))])
          | _ => (PolyML.print s; error "This case should not occur unif")
     end
         | _ => raise NoMatch ,
@@ -453,19 +474,25 @@ struct
 
     (* Rule IE *)
      (* pi here should be equiv to pId *)
-    fn (UnifEq (t, VarTerm (pi,x))) =>
+    fn (UnifEq (t, VarTerm (pi,ns,x))) =>
       if not (member x (fv t)) andalso
-        nameSetSubset (fa t) (fa (VarTerm (pi,x)))
+        nameSetSubset (fa t) (fa (VarTerm (pi,ns,x)))
         then ([(x,t)], [])
         else raise NoMatch
      | _ => raise NoMatch ,
 
-   fn (UnifFresh (a, VarTerm (pi,x))) =>
-     ([(x, permShiftVarRemName a x)], [])
+     (* Rule IF *)
+   fn (UnifFresh (a, VarTerm (pi,ns,x))) =>
+    let
+      val _ = if pi = pId then () else error "Should not happen: in rule IF got a variable with non trivial perm"
+      val var = VarTerm (pId, a::ns, x)
+    in
+      ([(x, var)], [])
+    end
       | _ => raise NoMatch
   ]
 
-  fun composeSubst s1 s2 = 
+  fun composeSubst s1 s2 =
   let
     val s = map (fn (v,t) => (v, subst s1 t)) s2
     val s' = filter (fn (v,t) => not (member v (fst (unzip s2)))) s1
@@ -879,19 +906,19 @@ struct
   exception CheckError of string
   fun err msg = raise CheckError msg
 
-  fun fmt' ([], _) = []
-    | fmt' (fmts, []) = fmts
-    | fmt' (f::fmts, v::vals) =
-    if f = "$"
-        then v::(fmt' (fmts, vals))
-        else f::(fmt' (fmts, v::vals))
-
-  fun fmt fm vals =
-    String.concat $
-        fmt' (map Char.toString (String.explode fm), vals)
-
   fun ferr fm vals =
     err $ fmt fm vals
+
+    (* TODO: Very expensive. Spec should have a
+    *       better representation *)
+    (*
+  fun specFind f spec =
+    List.foldr (fn (s,b) =>
+        case b of
+             NONE => if f s then SOME s else NONE
+           | SOME x => SOME x) NONE spec
+           *)
+
 
   fun checkNameSort spec sort =
     (case List.find (fn (SpecNameSort s) => s = sort
@@ -953,7 +980,7 @@ struct
     if s = sort
         then ()
         else ferr "The name '$' is expected to have the type '$' but '$' was found." [n,sort,s]
-    | typeCheck spec (VarTerm (perm, Variable (n,s,ps))) sort =
+    | typeCheck spec (VarTerm (perm, ns, Variable (n,s,ps))) sort =
     if s = sort
         then ()
         else ferr "The variable '$' is expected to have the type '$' but it has '$'" [n, sortToString sort, sortToString s]
@@ -976,7 +1003,7 @@ struct
 
 
   and inferSort spec (NameTerm (Name (_,_,s))) = NameSort s
-    | inferSort spec (VarTerm (perm, Variable (n,s,ps))) = s
+    | inferSort spec (VarTerm (perm, ns, Variable (n,s,ps))) = s
     | inferSort spec (TupleTerm tms) =
         TupleSort (map (inferSort spec) tms)
     | inferSort spec (AbsTerm (Name (_,_,s), tm)) =
@@ -995,6 +1022,7 @@ struct
     AbsTerm (checkName spec x, checkAstTermToTerm spec astTerm)
     | checkAstTermToTerm spec (AstVarTerm (astPerm, varName)) =
     VarTerm (checkAstPermToPerm spec astPerm,
+             [], (* TODO: I'm not sure if I should allow users to be able to provide shift perms *)
              checkVar spec varName)
     | checkAstTermToTerm spec (AstTuple astTerms) =
     TupleTerm (map (checkAstTermToTerm spec) astTerms)
@@ -1098,10 +1126,10 @@ struct
     | nameSetToString (PNameSet (PSet (aset,bset))) =
         fmt "(A - $) + $" [join "," (map nameToString aset), join "," (map nameToString bset)]
 
-  fun substToString subst = 
+  fun substToString subst =
     fmt "[$]"
     [join ", " $
-        map (fn (v,t) => fmt "$ := $ (fa: $ )" [varToString v, termToString t, nameSetToString (fa t)]) subst]
+        map (fn (v,t) => fmt "$ := $" [varToString v, termToString t]) subst]
 
   fun specExecuteStmts spec =
     spec |> forall
