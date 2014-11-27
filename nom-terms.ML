@@ -229,6 +229,23 @@ struct
   val symTerm   = SymTerm
   val absTerm   = AbsTerm
 
+  fun nameToString (Name (n,_,_)) = n
+  fun varToString (Variable (n,pset,_)) = n
+  fun permToString (FinPerm pi) =
+    String.concat $
+      map (fn (a,b) =>
+        "("^(nameToString a)^" "^(nameToString b)^")") pi
+  fun symToString (Symbol (s,_,_)) = s
+
+  fun termToString (NameTerm n) = nameToString n
+    | termToString (VarTerm (pi,v)) = "`" ^ (permToString pi) ^ (varToString v)
+    | termToString (TupleTerm tms) =
+        "(" ^ (join ", " (map termToString tms)) ^ ")"
+    | termToString (SymTerm (sym, tm)) =
+        (symToString sym) ^ " " ^ (termToString tm)
+    | termToString (AbsTerm (a,tm)) =
+        "["^(nameToString a)^"]"^(termToString tm)
+
   fun pAppTerm p (NameTerm n) = NameTerm (pApp p n)
     | pAppTerm p (VarTerm (p',v)) = VarTerm (pCompose p p',v)
     | pAppTerm p (TupleTerm args) = TupleTerm (map (pAppTerm p) args)
