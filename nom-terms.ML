@@ -242,7 +242,7 @@ struct
     | termToString (TupleTerm tms) =
         "(" ^ (join ", " (map termToString tms)) ^ ")"
     | termToString (SymTerm (sym, tm)) =
-        (symToString sym) ^ " " ^ (termToString tm)
+        (symToString sym) ^ " (" ^ (termToString tm) ^ ")"
     | termToString (AbsTerm (a,tm)) =
         "["^(nameToString a)^"]"^(termToString tm)
 
@@ -498,7 +498,7 @@ struct
         val (subst',prs) = applyRule rules
         val s = composeSubst subst subst'
       in
-        uniRw s (prs@(applySubstPr s rest))
+        uniRw s (prs@(applySubstPr subst' rest))
       end
         handle NoMatch => NONE
     end
@@ -1094,11 +1094,31 @@ struct
 
   fun astToSpec ast = astToSpec' ast []
 
+  fun nameSetToString (FinNameSet aset) = join "," (map nameToString aset)
+    | nameSetToString (PNameSet (PSet (aset,bset))) =
+        fmt "(A - $) + $" [join "," (map nameToString aset), join "," (map nameToString bset)]
+
+  fun substToString subst = 
+    fmt "[$]"
+    [join ", " $
+        map (fn (v,t) => fmt "$ := $ (fa: $ )" [varToString v, termToString t, nameSetToString (fa t)]) subst]
 
   fun specExecuteStmts spec =
     spec |> forall
     (fn SpecUnifyStmt (t1,t2) =>
-        (PolyML.print (unify t1 t2); ())
+        let
+          val _ = print "\n"
+          val _ = print "Unifying "
+          val _ = print (fmt "$ == $" [termToString t1, termToString t2])
+          val _ = print "\n"
+          val subst = unify t1 t2
+          val _ = print "Substitution "
+          val _ = print "\n"
+          val _ = print (case subst of SOME s => (substToString s) | NONE => "Not unifyable")
+        in
+          ()
+        end
+        (* (PolyML.print (unify t1 t2); ()) *)
       | SpecRewriteStmt t => () (*error "stmt: Not implemented yet"*)
       | _ => ())
 
