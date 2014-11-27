@@ -259,6 +259,12 @@ struct
     | termToString (AbsTerm (a,tm)) =
         "["^(nameToString a)^"]"^(termToString tm)
 
+  fun substToString subst =
+    fmt "[$]"
+    [join ", " $
+        map (fn (v,t) => fmt "$ := $" [varToString v, termToString t]) subst]
+
+
   fun pAppTerm p (NameTerm n) = NameTerm (pApp p n)
     | pAppTerm p (VarTerm (p',n,v)) = VarTerm (pCompose p p',n,v)
     | pAppTerm p (TupleTerm args) = TupleTerm (map (pAppTerm p) args)
@@ -339,6 +345,10 @@ struct
     | fv (AbsTerm (_,t)) = fv t
     | fv (TupleTerm tms) = flatmap fv tms
 
+
+    (* [Z := [a]a, XX := `(-b)(-d)XX, Y := `(-ff)Y] *)
+    (* [XX := `(-ff)Y] *)
+
   fun subst sigma (NameTerm n) = NameTerm n
     | subst sigma (SymTerm (s,t)) = SymTerm (s, subst sigma t)
     | subst sigma (AbsTerm (a,t)) = AbsTerm (a, subst sigma t)
@@ -347,8 +357,11 @@ struct
         case List.find (fn (v,_) => v = var) sigma of
              SOME (_,t) =>
                 (case t of
-                      VarTerm (pi',ns',v) => pAppTerm pi (VarTerm (pi',ns'@ns,v))
-                    | _ => if length ns = 0
+                      VarTerm (pi',ns',v) => 
+                        pAppTerm pi (VarTerm (pi',ns@ns',v))
+                        (* (VarTerm (pId,ns'@ns,v)) *)
+                    | _ => 
+                        if length ns = 0
                         then pAppTerm pi t
                         else error "Should not happen: invariant broken, substituting non-variable term for a variable with nontrivial shift permutation"
                 )
@@ -450,7 +463,8 @@ struct
            FinNameSet [] => raise NoMatch
          | FinNameSet (a::_) =>
              ([], [UnifFresh (a, t'), UnifEq (t', VarTerm (pId,ns,x))])
-         | _ => (PolyML.print s; error "This case should not occur unif")
+         | _ => (PolyML.print s; 
+                 error "This case should not occur unif")
     end
         | _ => raise NoMatch ,
 
@@ -496,6 +510,8 @@ struct
   let
     val s = map (fn (v,t) => (v, subst s1 t)) s2
     val s' = filter (fn (v,t) => not (member v (fst (unzip s2)))) s1
+    val _ = print (fmt "Not a member $ subst" [substToString s'])
+    val _ = print "\n"
   in
     s' @ s
   end
@@ -523,10 +539,14 @@ struct
     in
       let
         val (subst',prs) = applyRule rules
-        val s = composeSubst subst subst'
+        val s = composeSubst subst' subst
         val _ = print (join ", " (map (fn (UnifEq (t1,t2)) => fmt "$ = $" (map termToString [t1,t2])
                                        | (UnifFresh (a,t)) => fmt "$ # $" [nameToString a, termToString t])
                                        (prs@(applySubstPr subst' rest))))
+        val _ = print "    subst: "
+        val _ = print (substToString subst')
+        val _ = print "  composition : "
+        val _ = print (substToString s)
         val _ = print "\n"
       in
         uniRw s (prs@(applySubstPr subst' rest))
@@ -1129,11 +1149,6 @@ struct
   fun nameSetToString (FinNameSet aset) = join "," (map nameToString aset)
     | nameSetToString (PNameSet (PSet (aset,bset))) =
         fmt "(A - $) + $" [join "," (map nameToString aset), join "," (map nameToString bset)]
-
-  fun substToString subst =
-    fmt "[$]"
-    [join ", " $
-        map (fn (v,t) => fmt "$ := $" [varToString v, termToString t]) subst]
 
   fun specExecuteStmts spec =
     spec |> forall

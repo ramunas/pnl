@@ -26,6 +26,8 @@ fn f : ([n]n, [n]n, [n]n) => s
 
 # expect [XX := XX-b-d, Y := XX-b,d, Z := [a]a]
 unify f([a]b, `Z, `XX) == f([d]b, [a]a, `Y)
+# solution obtained 
+# [Y := `(-ff)Y, XX := `(-ff)(-d)(-b)Y, Z := [a]a]
 
 
 
