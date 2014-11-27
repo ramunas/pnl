@@ -1,0 +1,32 @@
+# Examples from Gabbay's paper
+
+nametype n
+type s
+
+name a : n
+name c : n
+name d > : n
+
+fn g : ([n]n,[n]n) => s
+
+var `X : n
+
+# expected [X := c]
+unify g([a]`X, [a]a) == g([d]c, [d]d)
+
+
+# example 2
+
+name b > : n
+name ff > : n
+var `XX + b + d : [n]n
+var `Z : [n]n
+var `Y + ff : [n]n
+fn f : ([n]n, [n]n, [n]n) => s
+
+# expect [XX := XX-b-d, Y := XX-b,d, Z := [a]a]
+unify f([a]b, `Z, `XX) == f([d]b, [a]a, `Y)
+
+
+
+# vim:ft=pnl:

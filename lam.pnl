@@ -35,14 +35,19 @@ name b < : v
 name c : v
 name d < : v
 
+unify `X == `(a b)X
 unify `X == `(a b)(c d)X
 unify `X == `Y
 unify `X == lam([x]`Y)
+
+var `T: lam
+unify lam([x]`T) == lam([y]`T)
 
 #var `Y : v
 #var `W - a: v
 #unify var(`U) == var(`Y)
 # unify lam([y]`X) == lam([x]`Y)
+
 
 
 # vim:ft=pnl:

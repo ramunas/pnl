@@ -485,7 +485,7 @@ struct
    fn (UnifFresh (a, VarTerm (pi,ns,x))) =>
     let
       val _ = if pi = pId then () else error "Should not happen: in rule IF got a variable with non trivial perm"
-      val var = VarTerm (pId, a::ns, x)
+      val var = VarTerm (pId, [a], x)
     in
       ([(x, var)], [])
     end
@@ -524,6 +524,10 @@ struct
       let
         val (subst',prs) = applyRule rules
         val s = composeSubst subst subst'
+        val _ = print (join ", " (map (fn (UnifEq (t1,t2)) => fmt "$ = $" (map termToString [t1,t2])
+                                       | (UnifFresh (a,t)) => fmt "$ # $" [nameToString a, termToString t])
+                                       (prs@(applySubstPr subst' rest))))
+        val _ = print "\n"
       in
         uniRw s (prs@(applySubstPr subst' rest))
       end
@@ -1153,7 +1157,8 @@ struct
   fun test () =
   let
     (* val file = "test.pnl" *)
-    val file = "lam.pnl"
+    (* val file = "lam.pnl" *)
+    val file = "uni.pnl"
     val ast = readSpecFromFile file
     val spec = astToSpec ast
     val _ = PolyML.print ast
