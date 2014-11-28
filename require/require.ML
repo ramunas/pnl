@@ -24,7 +24,7 @@ struct
 
   fun wc hi lo = (hi shiftlb 0w16) orb lo
 
-  fun w2b w = map chr 
+  fun w2b w = map chr
     [Word32.toInt (mkbyte w),
      Word32.toInt (mkbyte (w shiftrb 0w8)),
      Word32.toInt (mkbyte (w shiftrb 0w16)),
@@ -141,7 +141,7 @@ struct
     (Word32.fromInt (ord a)) +
     (Word32.fromInt (ord b) shiftlb 0w8)  +
     (Word32.fromInt (ord c) shiftlb 0w16) +
-    (Word32.fromInt (ord d) shiftlb 0w24)   
+    (Word32.fromInt (ord d) shiftlb 0w24)
 
   fun md5_advanced {len, msg} =
     let
@@ -220,6 +220,36 @@ struct
   fun getLoadedFiles () = !loadedFiles
   fun clearLoadedFiles () = loadedFiles := []
 
+
+  fun readAll' str stream =
+  let
+    val i = TextIO.input stream
+  in
+    if String.size i = 0
+        then str
+        else readAll' (str ^ i) stream
+  end
+
+  fun readAll stream = readAll' "" stream
+
+  fun withOpenFile fileName handler =
+  let
+    val fh = TextIO.openIn fileName
+    val res = handler fh
+    val () = TextIO.closeIn fh
+  in
+    res
+  end
+
+  fun slurp fileName =
+  let
+    val rs = ref ""
+  in
+    (withOpenFile fileName (fn s => (rs := readAll s));
+    !rs)
+  end
+
+
   fun getCanonicalName fileName =
     (* fileName |> MissingIO.slurp |> MD5.md5 |> MD5.bintohex *)
     (MD5.bintohex o MD5.md5 o slurp) fileName
@@ -232,15 +262,16 @@ struct
     log ("Marking the file \"" ^ fileName ^ "\" with canonical name (MD5) " ^
         cname ^ " as loaded"))
   end
+
   fun isLoaded fileName =
-    exists ((fn c => fn (_, c') => c = c') (getCanonicalName fileName)) (!loadedFiles)
+    List.exists ((fn c => fn (_, c') => c = c') (getCanonicalName fileName)) (!loadedFiles)
 
 
   fun dumpUseRel relPath =
   let
     val paths =
       map (fn (p,_) => OS.Path.mkRelative {path = p, relativeTo = relPath})
-        (Missing.reverse (!loadedFiles))
+        (List.rev (!loadedFiles))
     val useP = map (fn p => "use \""^ p ^ "\";\n") paths
   in
     concat useP
@@ -248,7 +279,7 @@ struct
 
   fun dumpUse () =
     concat (map (fn (p,_) => "use \""^ p ^ "\";\n")
-                (Missing.reverse (!loadedFiles)))
+                (List.rev (!loadedFiles)))
 
 
   type load_paths = string list
@@ -332,6 +363,8 @@ struct
 
   val eos = Char.chr 0
 
+  fun makeStream str = ref (str, 0)
+
   fun next s =
   let
     val (str,pos) = !s
@@ -350,15 +383,20 @@ struct
         else (String.sub (str,pos))
   end
 
-  fun matchStr s str = 
+  fun matchStr s str =
   let
-    val i = 0
+    val i = ref 0
     val l = String.size str
   in
-    while i <> l do
-        if next s = String.sub (str, i)
-            then ()
-            else raise ParseError "Expected '' but found ''"
+    while !i <> l do
+      let
+        val c = next s
+        val cs = String.sub (str, !i)
+      in
+        if c = cs
+            then i := !i + 1
+            else raise ParseError ("Expected '"^ (Char.toString cs) ^"' but found '"^ (Char.toString c) ^"'")
+      end
   end
 
   fun consumeWS s =
@@ -373,41 +411,54 @@ struct
         else raise ParseError ("White space expected but was found")
 
   fun parseMod s =
-    if Char.isGraph (peek s)
+    if Char.isAlpha (peek s) orelse #"/" = (peek s)
         then (Char.toString (next s)) ^ parseMod s
         else ""
 
-  fun parseMods' s =
+  fun parseMods s =
   let
+    val _ = consumeWS s
     val m = parseMod s
+    val _ = print m
     val _ = consumeWS s
   in
     if peek s = #","
-        then (next s; m :: (parseMods' s))
+        then (next s; m :: (parseMods s))
         else []
   end
 
-  fun parseMods s =
-  let
-    val _ = matchStr s "require"
-    val _ = consumeWS s
-    val m = parseMods' s
-  in
-    m
-  end
-
-  fun parseReq s =
+  fun parseHeader s =
   let
     val _    = consumeWS s
     val _    = matchStr s "(*"
     val _    = consumeWS s
-    val mods = parseMods s
+    val _    = matchStr s "uses"
+    val _    = consumeWS1 s
+  in
+    ()
+  end
+
+  fun parseFooter s =
+  let
     val _    = consumeWS s
     val _    = matchStr s "*)"
+  in
+    ()
+  end
+
+  exception NoParseError
+
+  fun parseReq' s =
+  let
+    val _ = parseHeader s handle ParseError _ => raise NoParseError
+    val mods = parseMods s
+    val _ = parseFooter s
   in
     mods
   end
 
+  fun parseReq s =
+    parseReq' s handle NoParseError => []
 
   (*
     <req-clause> ::= `require' <word> (`,' <word>)*
@@ -415,9 +466,7 @@ struct
     <mods> ::= <mod> <mod-list>
     <mod-list> ::= <empty> | `,' <mod> <mod-list>
   *)
-
-
-
+  (*
   fun readUsesFromFile filename =
   let
     val fh    = TextIO.openIn filename
@@ -426,11 +475,23 @@ struct
     val ()    = TextIO.closeIn fh
   in
     case files of
-         LEFT (m as (Parser.Error msg,s)) => raise UsesError (errormsg m ^ " in file " ^ filename) 
+         LEFT (m as (Parser.Error msg,s)) => raise UsesError (errormsg m ^ " in file " ^ filename)
        | LEFT (Parser.Fail msg,_)  => []
        | RIGHT (fs,_)              => fs
   end
+  *)
 
+  fun readUsesFromFile filename =
+  let
+    val cont = slurp filename
+    val s = makeStream cont
+  in
+    parseReq s
+    handle ParseError msg => raise ParseError ("ParseError: "^filename^": "^msg)
+  end
+
+  fun foreach f [] = ()
+    | foreach f (e::rest) = (f e; foreach f rest)
 
   fun collectFileListFromModStrFiles modStr =
   let
@@ -467,7 +528,7 @@ struct
                       val modStrs = readUsesFromFile p
                       val () = log ("Visiting file " ^ p ^ " with canonical name " ^ c)
                       val vis = (modStr, p, c)::visited
-                      val () = forall (fn ms => loadFile ms vis) modStrs
+                      val () = foreach (fn ms => loadFile ms vis) modStrs
                       val () = loaded := (!loaded) @ [(modStr,p)]
                       val _ = markAsLoadedFile p
                     in () end
@@ -485,7 +546,7 @@ struct
   let
     val files = collectFileListFromModStrFiles modStr
   in
-    forall (fn (m,f) =>
+    foreach (fn (m,f) =>
         (log1 ("Loading module \"" ^ m ^ "\" resolved as the file \"" ^ f ^ "\"");
          use f)) files
   end
