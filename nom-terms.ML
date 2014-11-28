@@ -1,4 +1,4 @@
-(**
+(*
   uses lib/missing,
        lib/parser,
        lib/missing-io
@@ -230,10 +230,12 @@ struct
 
   datatype term
     = NameTerm of name
-    | VarTerm of name_perm * (name list) * variable
     | TupleTerm of term list
     | SymTerm of sym * term
     | AbsTerm of name * term
+    | VarTerm of name_perm * (name list) * variable
+    (* Constants are not subject to substitution *)
+    | ConstTerm of name_perm * (name list) * variable
 
   val nameTerm  = NameTerm
   fun varTerm v = VarTerm (pId, [], v)
@@ -252,6 +254,8 @@ struct
   fun termToString (NameTerm n) = nameToString n
     | termToString (VarTerm (pi,names,v)) =
         "`" ^ (permToString pi) ^ (String.concat $ map (fn x => fmt "(-$)" [nameToString x]) names)  ^ (varToString v)
+    | termToString (ConstTerm (pi,names,v)) =
+        "*cnst " ^ (permToString pi) ^ (String.concat $ map (fn x => fmt "(-$)" [nameToString x]) names)  ^ (varToString v)
     | termToString (TupleTerm tms) =
         "(" ^ (join ", " (map termToString tms)) ^ ")"
     | termToString (SymTerm (sym, tm)) =
@@ -267,6 +271,7 @@ struct
 
   fun pAppTerm p (NameTerm n) = NameTerm (pApp p n)
     | pAppTerm p (VarTerm (p',n,v)) = VarTerm (pCompose p p',n,v)
+    | pAppTerm p (ConstTerm (p',n,v)) = ConstTerm (pCompose p p',n,v)
     | pAppTerm p (TupleTerm args) = TupleTerm (map (pAppTerm p) args)
     | pAppTerm p (SymTerm (sym,term)) = SymTerm (sym, pAppTerm p term)
     | pAppTerm p (AbsTerm (name, term)) = AbsTerm (pApp p name, pAppTerm p term)
@@ -327,6 +332,7 @@ struct
 
   fun fa (NameTerm n) = FinNameSet [n]
     | fa (VarTerm (p,n,Variable (_,_,pset))) = PNameSet (pAppPSet p (psetRemNames n pset))
+    | fa (ConstTerm (p,n,Variable (_,_,pset))) = PNameSet (pAppPSet p (psetRemNames n pset))
     | fa (SymTerm (_,t)) = fa t
     | fa (AbsTerm (n,t)) = fa t
     | fa (TupleTerm tms) =
@@ -341,6 +347,7 @@ struct
 
   fun fv (NameTerm n) = []
     | fv (VarTerm (_,_,v)) = [v]
+    | fv (ConstTerm _) = []
     | fv (SymTerm (_,t)) = fv t
     | fv (AbsTerm (_,t)) = fv t
     | fv (TupleTerm tms) = flatmap fv tms
@@ -353,14 +360,15 @@ struct
     | subst sigma (SymTerm (s,t)) = SymTerm (s, subst sigma t)
     | subst sigma (AbsTerm (a,t)) = AbsTerm (a, subst sigma t)
     | subst sigma (TupleTerm tms) = TupleTerm (map (subst sigma) tms)
+    | subst sigma (ConstTerm cnst) = ConstTerm cnst
     | subst sigma (VarTerm (pi,ns,var)) =
         case List.find (fn (v,_) => v = var) sigma of
              SOME (_,t) =>
                 (case t of
-                      VarTerm (pi',ns',v) => 
+                      VarTerm (pi',ns',v) =>
                         pAppTerm pi (VarTerm (pi',ns@ns',v))
                         (* (VarTerm (pId,ns'@ns,v)) *)
-                    | _ => 
+                    | _ =>
                         if length ns = 0
                         then pAppTerm pi t
                         else error "Should not happen: invariant broken, substituting non-variable term for a variable with nontrivial shift permutation"
@@ -387,6 +395,10 @@ struct
     | alphaEq (TupleTerm t1) (TupleTerm t2) =
         length t1 = length t2 andalso
         all (uncurry alphaEq) (zip t1 t2)
+    | alphaEq (ConstTerm (p1,ns1,v1)) (ConstTerm (p2,ns2,v2)) =
+        v1 = v2 andalso
+        ns1 = ns2 andalso (* FIXME: define equality between shift perms, and psets *)
+        permAgreeOn p1 p2 (getPSet v1)
     | alphaEq (VarTerm (p1,ns1,v1)) (VarTerm (p2,ns2,v2)) =
         v1 = v2 andalso
         ns1 = ns2 andalso (* FIXME: define equality between shift perms, and psets *)
@@ -463,7 +475,7 @@ struct
            FinNameSet [] => raise NoMatch
          | FinNameSet (a::_) =>
              ([], [UnifFresh (a, t'), UnifEq (t', VarTerm (pId,ns,x))])
-         | _ => (PolyML.print s; 
+         | _ => (PolyML.print s;
                  error "This case should not occur unif")
     end
         | _ => raise NoMatch ,
@@ -556,6 +568,44 @@ struct
 
 
   fun unify t1 t2 = uniRw [] [UnifEq (t1, t2)]
+
+
+  fun applyShiftPerms (VarTerm (pi,names, Variable (v,s,pset))) =
+    VarTerm (pi, [], Variable (v,s,psetRemNames names pset))
+    | applyShiftPerms (ConstTerm tm) = ConstTerm tm
+    | applyShiftPerms (AbsTerm (a,tm)) = AbsTerm (a,applyShiftPerms tm)
+    | applyShiftPerms (NameTerm n) = NameTerm n
+    | applyShiftPerms (TupleTerm tms) =
+        TupleTerm (map applyShiftPerms tms)
+    | applyShiftPerms (SymTerm (s,tm)) =
+        SymTerm (s, applyShiftPerms tm)
+
+  fun makeVarConst (VarTerm v) = ConstTerm v
+    | makeVarConst (ConstTerm v) = ConstTerm v
+    | makeVarConst (AbsTerm (a,tm)) = AbsTerm (a, makeVarConst tm)
+    | makeVarConst (TupleTerm tms) = TupleTerm (map makeVarConst tms)
+    | makeVarConst (NameTerm n) = NameTerm n
+    | makeVarConst (SymTerm (sym,tm)) = SymTerm (sym, makeVarConst tm)
+
+  fun makeConstVar (VarTerm v) = VarTerm v
+    | makeConstVar (ConstTerm v) = VarTerm v
+    | makeConstVar (AbsTerm (a,tm)) = AbsTerm (a, makeConstVar tm)
+    | makeConstVar (TupleTerm tms) = TupleTerm (map makeConstVar tms)
+    | makeConstVar (NameTerm n) = NameTerm n
+    | makeConstVar (SymTerm (sym,tm)) = SymTerm (sym, makeConstVar tm)
+
+  fun matchT tm template =
+  let
+    val ctm = makeVarConst tm
+    val sol = unify ctm template
+  in
+    case sol of
+         NONE => NONE
+       | SOME s => SOME $ map (fn (v, tm) => (v, makeConstVar tm)) s
+  end
+
+
+  (* TODO: matching, need to add constants *)
 
 
   structure P = Parser(ParserStreamIO)
@@ -1028,6 +1078,7 @@ struct
 
   and inferSort spec (NameTerm (Name (_,_,s))) = NameSort s
     | inferSort spec (VarTerm (perm, ns, Variable (n,s,ps))) = s
+    | inferSort spec (ConstTerm (perm, ns, Variable (n,s,ps))) = s
     | inferSort spec (TupleTerm tms) =
         TupleSort (map (inferSort spec) tms)
     | inferSort spec (AbsTerm (Name (_,_,s), tm)) =
