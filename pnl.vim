@@ -13,7 +13,7 @@ syn match PNLOp "=>"
 syn match PNLOp "==>"
 syn match PNLOp ":"
 
-syn keyword PNLKeywords fn rw type nametype name var sos term rewrite unify
+syn keyword PNLKeywords fn rw type nametype name var sos term rewrite unify normalize
 " syn keyword PNLOp =>
 
 hi def link PNLKeywords   Keyword

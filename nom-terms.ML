@@ -499,11 +499,10 @@ struct
      | _ => raise NoMatch ,
 
     (* Rule IE *)
-     (* pi here should be equiv to pId *)
     fn (UnifEq (t, VarTerm (pi,ns,x))) =>
       if not (member x (fv t)) andalso
         nameSetSubset (fa t) (fa (VarTerm (pi,ns,x)))
-        then ([(x,t)], [])
+        then ([(x, pAppTerm (pInverse pi) t )], [])
         else raise NoMatch
      | _ => raise NoMatch ,
 
@@ -522,8 +521,8 @@ struct
   let
     val s = map (fn (v,t) => (v, subst s1 t)) s2
     val s' = filter (fn (v,t) => not (member v (fst (unzip s2)))) s1
-    val _ = print (fmt "Not a member $ subst" [substToString s'])
-    val _ = print "\n"
+    (* val _ = print (fmt "Not a member $ subst" [substToString s']) *)
+    (* val _ = print "\n" *)
   in
     s' @ s
   end
@@ -567,7 +566,7 @@ struct
     end
 
 
-  fun unify t1 t2 = uniRw [] [UnifEq (t1, t2)]
+  fun unify t1 t2 = (print "\n"; uniRw [] [UnifEq (t1, t2)])
 
 
   fun applyShiftPerms (VarTerm (pi,names, Variable (v,s,pset))) =
@@ -594,6 +593,7 @@ struct
     | makeConstVar (NameTerm n) = NameTerm n
     | makeConstVar (SymTerm (sym,tm)) = SymTerm (sym, makeConstVar tm)
 
+
   fun matchT tm template =
   let
     val ctm = makeVarConst tm
@@ -604,9 +604,42 @@ struct
        | SOME s => SOME $ map (fn (v, tm) => (v, makeConstVar tm)) s
   end
 
+  fun rewriteTerm [] tm = NONE
+    | rewriteTerm ((l,r)::rules) tm =
+    case matchT tm l of
+         NONE => rewriteTerm rules tm
+       | SOME s => SOME $ subst s r
 
-  (* TODO: matching, need to add constants *)
+  fun rewrite rules (NameTerm n) = rewriteTerm rules (NameTerm n)
+    | rewrite rules (VarTerm v) = rewriteTerm rules (VarTerm v)
+    | rewrite rules (ConstTerm v) = rewriteTerm rules (ConstTerm v)
+    | rewrite rules (SymTerm (sym,tm)) =
+        (case rewrite rules tm of
+             SOME tm' => SOME (SymTerm (sym,tm'))
+           | NONE => rewriteTerm rules (SymTerm (sym,tm)))
+    | rewrite rules (AbsTerm (a,tm)) =
+        (case rewrite rules tm of
+             SOME tm' => SOME (AbsTerm (a,tm'))
+           | NONE => rewriteTerm rules (AbsTerm (a,tm)))
+    | rewrite rules (TupleTerm tms) =
+    let
+      fun rw [] = NONE
+        | rw (t::tms) =
+            case rewrite rules t of
+                 SOME t' => SOME (t'::tms)
+               | NONE => case rw tms of
+                              NONE => NONE
+                            | SOME tms' => SOME (t::tms)
+    in
+      case rw tms of
+           NONE => rewriteTerm rules (TupleTerm tms)
+         | SOME tms' => SOME (TupleTerm tms')
+    end
 
+  fun normalize rules tm =
+    case rewrite rules tm of
+         SOME tm' => normalize rules tm'
+       | NONE => tm
 
   structure P = Parser(ParserStreamIO)
   local
@@ -650,6 +683,7 @@ struct
     | AstRewriteDecl of ast_term * ast_term
     | AstSOSDecl of (ast_term * ast_term) list
     | AstRewriteStmtDecl of ast_term
+    | AstNormalizeStmtDecl of ast_term
     | AstUnifyStmtDecl of ast_term * ast_term
 
   type ast = ast_node list
@@ -881,12 +915,17 @@ struct
     return (AstRewriteDecl (t1, t2))
     )))
 
-
   fun parseRewriteStatementDecl () =
     ws () >>
     str "rewrite" >>
     ws1 () >> nofail (
     parseTerm () >>= (fn t => return (AstRewriteStmtDecl t)))
+
+  fun parseNormalizeStatementDecl () =
+    ws () >>
+    str "normalize" >>
+    ws1 () >> nofail (
+    parseTerm () >>= (fn t => return (AstNormalizeStmtDecl t)))
 
   fun parseUnifyStmtDecl () =
     ws () >>
@@ -924,6 +963,8 @@ struct
         </choice/>
             parseRewriteStatementDecl ()
         </choice/>
+            parseNormalizeStatementDecl ()
+        </choice/>
             parseUnifyStmtDecl ()
         </choice/>
             parseSOSDecl ()
@@ -959,12 +1000,18 @@ struct
     | SpecTerm of term
     | SpecRewrite of rewrite_rule
     | SpecRewriteStmt of term
+    | SpecNormalizeStmt of term
     | SpecUnifyStmt of term * term
     | SpecSOS of sos_rule
 
   type spec = spec_node list
 
   val emptyCont = []
+
+  fun specGetRewriteRules spec =
+    spec |>
+    filter (fn SpecRewrite _ => true | _ => false) |>
+    map (fn SpecRewrite (RewriteRule x) => x | _ => error "")
 
   fun specNameSorts spec =
     spec |>
@@ -1181,6 +1228,9 @@ struct
     | astNodeToSpecNode (AstRewriteStmtDecl ast) spec =
         SpecRewriteStmt (checkAstTermToTerm spec ast)
 
+    | astNodeToSpecNode (AstNormalizeStmtDecl ast) spec =
+        SpecNormalizeStmt (checkAstTermToTerm spec ast)
+
     | astNodeToSpecNode (AstUnifyStmtDecl (ast1,ast2)) spec =
         SpecUnifyStmt (checkAstTermToTerm spec ast1, checkAstTermToTerm spec ast2)
 
@@ -1216,15 +1266,42 @@ struct
         in
           ()
         end
-        (* (PolyML.print (unify t1 t2); ()) *)
-      | SpecRewriteStmt t => () (*error "stmt: Not implemented yet"*)
+      | SpecRewriteStmt t =>
+          let
+            val rules = specGetRewriteRules spec
+            val t' = rewrite rules t
+          in
+            case t' of
+                 NONE => print "Not able to rewrite"
+               | SOME t' =>
+                   let
+                     val _ = print "Rewrote: "
+                     val _ = print (termToString t')
+                     val _ = print "\n"
+                   in
+                     ()
+                   end
+          end
+      | SpecNormalizeStmt t =>
+          let
+            val rules = specGetRewriteRules spec
+            val t' = normalize rules t
+          in
+            let
+              val _ = print "Normalized to: "
+              val _ = print (termToString t')
+              val _ = print "\n"
+            in
+              ()
+            end
+          end
       | _ => ())
 
   fun test () =
   let
     (* val file = "test.pnl" *)
-    (* val file = "lam.pnl" *)
-    val file = "uni.pnl"
+    val file = "lam.pnl"
+    (* val file = "uni.pnl" *)
     val ast = readSpecFromFile file
     val spec = astToSpec ast
     val _ = PolyML.print ast

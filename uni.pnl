@@ -14,7 +14,6 @@ var `X : n
 # expected [X := c]
 unify g([a]`X, [a]a) == g([d]c, [d]d)
 
-
 # example 2
 
 name b > : n
@@ -28,7 +27,6 @@ fn f : ([n]n, [n]n, [n]n) => s
 unify f([a]b, `Z, `XX) == f([d]b, [a]a, `Y)
 # solution obtained 
 # [Y := `(-ff)Y, XX := `(-ff)(-d)(-b)Y, Z := [a]a]
-
 
 
 # vim:ft=pnl:

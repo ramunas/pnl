@@ -14,9 +14,6 @@ var `X : lam
 var `Y : lam
 var `Z - y : lam
 
-var `U : v
-
-
 rw subst([x]var(x),`X) ==> `X
 rw subst([y]var(x),`X) ==> var(x)
 
@@ -27,26 +24,24 @@ rw subst([x]lam([y]`Y), `Z) ==>
     lam([y]subst([x]`Y, `Z))
 
 
-rewrite subst([x]var(x), var(y) )
+name z : v
+rewrite subst([z]var(z), var(y))
 
-# unify `X == `X
-name a : v
-name b < : v
-name c : v
-name d < : v
+normalize subst([z]var(z), var(y))
+normalize subst([x]lam([y]var(x)), app(var(y), var(y)))
+normalize subst([x]lam([y]var(x)), app(var(z), var(z)))
 
-unify `X == `(a b)X
-unify `X == `(a b)(c d)X
-unify `X == `Y
-unify `X == lam([x]`Y)
 
-var `T: lam
-unify lam([x]`T) == lam([y]`T)
-
-#var `Y : v
-#var `W - a: v
-#unify var(`U) == var(`Y)
-# unify lam([y]`X) == lam([x]`Y)
+# name a : v
+# name b < : v
+# name c : v
+# name d < : v
+# unify `X == `(a b)X
+# unify `X == `(a b)(c d)X
+# unify `X == `Y
+# unify `X == lam([x]`Y)
+# var `T: lam
+# unify lam([x]`T) == lam([y]`T)
 
 
 
