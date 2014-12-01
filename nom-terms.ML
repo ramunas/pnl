@@ -522,24 +522,21 @@ struct
 
   fun composeSubst s1 s2 =
   let
+    (* [X := t] r
+     * [X := t] [X := t'] r = [X := [X := t] t'] r
+     * [X := t] [Y := t'] r = [X := t, Y := [X := t] t'] r
+     *)
     val s = map (fn (v,t) => (v, subst s1 t)) s2
     val s' = filter (fn (v,t) => not (member v (fst (unzip s2)))) s1
-    (* val _ = print (fmt "Not a member $ subst" [substToString s']) *)
-    (* val _ = print "\n" *)
   in
     s' @ s
   end
-    (*
-    * [X := t] r
-    * [X := t] [X := t'] r = [X := [X := t] t'] r
-    * [X := t] [Y := t'] r = [X := t, Y := [X := t] t'] r
-    *)
 
   fun applySubstPr sigma pr =
     pr |> map (fn UnifEq (t1,t2) => UnifEq (subst sigma t1, subst sigma t2)
                 | UnifFresh (a,t) => UnifFresh (a, subst sigma t))
 
-  fun uniRw subst [] = (flog "Unification result: $" [substToString subst]; SOME subst)
+  fun uniRw subst [] = (flog "    Unification result: $" [substToString subst]; RIGHT subst)
     | uniRw subst (pr::rest) =
     let
       fun applyRule [] = raise NoMatch
@@ -552,7 +549,7 @@ struct
           | _ => r pr handle NoMatch => applyRule rules
     in
       let
-        val _ = log "Problem: "
+        val _ = log "    Pr: "
         val _ = log (join ", " (map (fn (UnifEq (t1,t2)) => fmt "$ = $" (map termToString [t1,t2])
                                        | (UnifFresh (a,t)) => fmt "$ # $" [nameToString a, termToString t])
                                        (pr::rest)))
@@ -565,7 +562,7 @@ struct
       in
         uniRw s (prs@(applySubstPr subst' rest))
       end
-        handle NoMatch => (log " Not unifyable\n"; NONE)
+        handle NoMatch => (log "\n    Not unifyable\n"; LEFT (subst, (pr::rest)))
     end
 
 
@@ -610,17 +607,44 @@ struct
     val sol = unify ctm template
   in
     case sol of
-         NONE => NONE
-       | SOME s =>
-            SOME $ map (fn (v, tm) => 
+         LEFT _ => NONE
+       | RIGHT s =>
+            SOME $ map (fn (v, tm) =>
                         (v, (applyShiftPerms o makeConstVar) tm)) s
   end
 
+  fun equivariantMatch (FinPerm pi) tm template =
+  let
+    val ctm = makeVarConst tm
+    val sol = unify ctm (pAppTerm (FinPerm pi) template)
+  in
+    case sol of
+         LEFT (_, (UnifEq (NameTerm a, NameTerm b))::pr) =>
+            (flog "($ $)" [termToString (NameTerm a),  termToString (NameTerm b)];
+            if member (a,b) pi orelse member (b,a) pi
+                then NONE
+                else equivariantMatch (FinPerm ((a,b)::pi)) tm template)
+       | LEFT _ => NONE
+       | RIGHT s =>
+            SOME $ (FinPerm pi, 
+                    map (fn (v, tm) =>
+                        (v, (applyShiftPerms o makeConstVar) tm)) s)
+  end
+
+  fun rewriteTerm [] tm = NONE
+    | rewriteTerm ((l,r)::rules) tm =
+    case equivariantMatch pId tm l of
+         NONE => rewriteTerm rules tm
+       | SOME (pi,sigma) => SOME $ (pAppTerm pi (subst sigma r))
+                        (* subst s (pAppTerm pi r) *)
+
+  (*
   fun rewriteTerm [] tm = NONE
     | rewriteTerm ((l,r)::rules) tm =
     case matchT tm l of
          NONE => rewriteTerm rules tm
        | SOME s => SOME $ subst s r
+       *)
 
   fun rewrite rules (NameTerm n) = rewriteTerm rules (NameTerm n)
     | rewrite rules (VarTerm v) = rewriteTerm rules (VarTerm v)
@@ -633,7 +657,7 @@ struct
         (case rewrite rules tm of
              SOME tm' => SOME (AbsTerm (a,tm'))
            | NONE => rewriteTerm rules (AbsTerm (a,tm)))
-    | rewrite rules (TupleTerm tms) =
+    | rewrite rules (TupleTerm terms) =
     let
       fun rw [] = NONE
         | rw (t::tms) =
@@ -641,10 +665,10 @@ struct
                  SOME t' => SOME (t'::tms)
                | NONE => case rw tms of
                               NONE => NONE
-                            | SOME tms' => SOME (t::tms)
+                            | SOME tms' => SOME (t::tms')
     in
-      case rw tms of
-           NONE => rewriteTerm rules (TupleTerm tms)
+      case rw terms of
+           NONE => rewriteTerm rules (TupleTerm terms)
          | SOME tms' => SOME (TupleTerm tms')
     end
 
@@ -1274,7 +1298,7 @@ struct
           val subst = unify t1 t2
           val _ = print "Substitution "
           val _ = print "\n"
-          val _ = print (case subst of SOME s => (substToString s) | NONE => "Not unifyable")
+          val _ = print (case subst of RIGHT s => (substToString s) | LEFT _ => "Not unifyable")
         in
           ()
         end
@@ -1289,7 +1313,7 @@ struct
                  NONE => print "Not able to rewrite"
                | SOME t' =>
                    let
-                     val _ = print "Rewrote: "
+                     val _ = print "\nRewrote: "
                      val _ = print (termToString t')
                      val _ = print "\n"
                    in
