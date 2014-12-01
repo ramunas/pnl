@@ -23,6 +23,8 @@ rw subst([x]app(`Y, `Z), `X) ==>
 rw subst([x]lam([y]`Y), `Z) ==>
     lam([y]subst([x]`Y, `Z))
 
+# beta-rule
+rw app(lam([x]`X), `Y) ==> subst([x]`X, `Y)
 
 name z : v
 rewrite subst([z]var(z), var(y))
@@ -31,6 +33,13 @@ normalize subst([z]var(z), var(y))
 normalize subst([x]lam([y]var(x)), app(var(y), var(y)))
 normalize subst([x]lam([y]var(x)), app(var(z), var(z)))
 
+name a : v
+name b : v
+name c : v
+normalize app(lam([x]var(x)),`X)
+
+normalize app(lam([a]lam([b]app(var(a), var(b)))), lam([c]var(c)))
+# rewrite app(lam([a]lam([b]app(var(a), var(b)))), lam([c]var(c)))
 
 # name a : v
 # name b < : v

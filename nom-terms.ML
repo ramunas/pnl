@@ -97,6 +97,9 @@ struct
     String.concat $
         fmt' (map Char.toString (String.explode fm), vals)
 
+  fun log msg = print msg
+  fun flog fm vals = log (fmt fm vals)
+
 
   type base_sort = string
   type name_sort = string
@@ -259,7 +262,7 @@ struct
     | termToString (TupleTerm tms) =
         "(" ^ (join ", " (map termToString tms)) ^ ")"
     | termToString (SymTerm (sym, tm)) =
-        (symToString sym) ^ " (" ^ (termToString tm) ^ ")"
+        (symToString sym) ^ "(" ^ (termToString tm) ^ ")"
     | termToString (AbsTerm (a,tm)) =
         "["^(nameToString a)^"]"^(termToString tm)
 
@@ -536,7 +539,7 @@ struct
     pr |> map (fn UnifEq (t1,t2) => UnifEq (subst sigma t1, subst sigma t2)
                 | UnifFresh (a,t) => UnifFresh (a, subst sigma t))
 
-  fun uniRw subst [] = SOME subst
+  fun uniRw subst [] = (flog "Unification result: $" [substToString subst]; SOME subst)
     | uniRw subst (pr::rest) =
     let
       fun applyRule [] = raise NoMatch
@@ -549,24 +552,31 @@ struct
           | _ => r pr handle NoMatch => applyRule rules
     in
       let
+        val _ = log "Problem: "
+        val _ = log (join ", " (map (fn (UnifEq (t1,t2)) => fmt "$ = $" (map termToString [t1,t2])
+                                       | (UnifFresh (a,t)) => fmt "$ # $" [nameToString a, termToString t])
+                                       (pr::rest)))
+
         val (subst',prs) = applyRule rules
         val s = composeSubst subst' subst
-        val _ = print (join ", " (map (fn (UnifEq (t1,t2)) => fmt "$ = $" (map termToString [t1,t2])
-                                       | (UnifFresh (a,t)) => fmt "$ # $" [nameToString a, termToString t])
-                                       (prs@(applySubstPr subst' rest))))
-        val _ = print "    subst: "
-        val _ = print (substToString subst')
-        val _ = print "  composition : "
-        val _ = print (substToString s)
-        val _ = print "\n"
+
+        val _ = flog " ==> $" [substToString subst']
+        val _ = log "\n"
       in
         uniRw s (prs@(applySubstPr subst' rest))
       end
-        handle NoMatch => NONE
+        handle NoMatch => (log " Not unifyable\n"; NONE)
     end
 
 
-  fun unify t1 t2 = (print "\n"; uniRw [] [UnifEq (t1, t2)])
+  fun unify t1 t2 =
+  let
+    val _ = log "\n"
+    val _ = flog "Unifying '$' and '$'" [termToString t1, termToString t2]
+    val _ = log "\n"
+  in
+    uniRw [] [UnifEq (t1, t2)]
+  end
 
 
   fun applyShiftPerms (VarTerm (pi,names, Variable (v,s,pset))) =
@@ -601,7 +611,9 @@ struct
   in
     case sol of
          NONE => NONE
-       | SOME s => SOME $ map (fn (v, tm) => (v, makeConstVar tm)) s
+       | SOME s =>
+            SOME $ map (fn (v, tm) => 
+                        (v, (applyShiftPerms o makeConstVar) tm)) s
   end
 
   fun rewriteTerm [] tm = NONE
@@ -988,7 +1000,7 @@ struct
     = RewriteRule of term * term
 
   datatype sos_rule
-    = SOSRule of string (* predicate list * *)
+    = SOSRule of string
 
   datatype spec_node
     = SpecNameSort of name_sort
@@ -1268,6 +1280,8 @@ struct
         end
       | SpecRewriteStmt t =>
           let
+            val _ = print "Rewriting: "
+            val _ = print (termToString t)
             val rules = specGetRewriteRules spec
             val t' = rewrite rules t
           in
