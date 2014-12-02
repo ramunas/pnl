@@ -63,18 +63,6 @@ sig
   val fa : term -> nameset
 
 
-  (* val inferType : term -> (string, sort * base_sort) Either.either *)
-  (*
-  val unify : term -> term ->
-  *)
-
-
-  (* type specification *)
-  (* val emptySpecification : specification *)
-  (* val readSpec : string -> specification *)
-  (* val readSpecFromFile : string -> specification *)
-
-
   val test : unit -> unit
 
 end;
@@ -626,7 +614,7 @@ struct
                 else equivariantMatch (FinPerm ((a,b)::pi)) tm template)
        | LEFT _ => NONE
        | RIGHT s =>
-            SOME $ (FinPerm pi, 
+            SOME $ (FinPerm pi,
                     map (fn (v, tm) =>
                         (v, (applyShiftPerms o makeConstVar) tm)) s)
   end
@@ -718,9 +706,11 @@ struct
     | AstTermDecl of ast_term
     | AstRewriteDecl of ast_term * ast_term
     | AstSOSDecl of (ast_term * ast_term) list
+
     | AstRewriteStmtDecl of ast_term
     | AstNormalizeStmtDecl of ast_term
     | AstUnifyStmtDecl of ast_term * ast_term
+    | AstNormalizesToStmt of ast_term * ast_term
 
   type ast = ast_node list
 
@@ -972,6 +962,15 @@ struct
     parseTerm () >>= (fn t2 =>
     return (AstUnifyStmtDecl (t1,t2)))))
 
+  fun parseNormalizesToStmt () =
+    ws () >>
+    str "normalizes" >>
+    ws1 () >> nofail (
+    parseTerm () >>= (fn t1 =>
+    ws1 () >> str "to" >> ws1 () >>
+    parseTerm () >>= (fn t2 =>
+    return (AstNormalizesToStmt (t1,t2)))))
+
   fun parseSOSDecl () =
     ws () >>
     str "sos" >>
@@ -1004,6 +1003,8 @@ struct
             parseUnifyStmtDecl ()
         </choice/>
             parseSOSDecl ()
+        </choice/>
+            parseNormalizesToStmt ()
     ) >>= (fn r => ws () >> eof r)
 
 
@@ -1037,12 +1038,14 @@ struct
     | SpecRewrite of rewrite_rule
     | SpecRewriteStmt of term
     | SpecNormalizeStmt of term
+    | SpecNormalizesToStmt of term * term
     | SpecUnifyStmt of term * term
     | SpecSOS of sos_rule
 
   type spec = spec_node list
 
-  val emptyCont = []
+  fun specFind f spec =
+    List.find f (reverse spec)
 
   fun specGetRewriteRules spec =
     spec |>
@@ -1078,13 +1081,13 @@ struct
 
 
   fun checkNameSort spec sort =
-    (case List.find (fn (SpecNameSort s) => s = sort
+    (case specFind (fn (SpecNameSort s) => s = sort
                      | _ => false) spec of
         SOME _ => sort
       | NONE => ferr "The sort $ hase not been declared." [sort])
 
   fun checkBaseSort spec sort =
-    (case List.find (fn (SpecBaseSort s) => s = sort
+    (case specFind (fn (SpecBaseSort s) => s = sort
                      | _ => false) spec of
         SOME _ => sort
       | NONE => ferr "The sort $ hase not been declared." [sort])
@@ -1101,21 +1104,21 @@ struct
     | checkAstSortToSort spec _ = error "checkAstSortToSort"
 
   fun checkName spec name =
-    case List.find (fn (SpecName (Name (n, p, s))) => n = name
+    case specFind (fn (SpecName (Name (n, p, s))) => n = name
                      | _ => false) spec of
          SOME (SpecName n) => n
        | NONE => ferr "The name $ has not been declared." [name]
        | _ => error "Uhandled case in checkName"
 
   fun checkVar spec name =
-    case List.find (fn (SpecVar (Variable (n,_,_))) => name = n
+    case specFind (fn (SpecVar (Variable (n,_,_))) => name = n
                      | _ => false) spec of
          SOME (SpecVar (v)) => v
        | NONE => ferr "The variable '$' has not been declared." [name]
        | _ => error "checkVar"
 
   fun checkSym spec name =
-    case List.find (fn (SpecSym (Symbol (n,_,_))) => name = n
+    case specFind (fn (SpecSym (Symbol (n,_,_))) => name = n
                      | _ => false) spec of
          SOME (SpecSym (s)) => s
        | NONE => ferr "The symbol '$' has not been declared." [name]
@@ -1267,6 +1270,10 @@ struct
     | astNodeToSpecNode (AstNormalizeStmtDecl ast) spec =
         SpecNormalizeStmt (checkAstTermToTerm spec ast)
 
+    | astNodeToSpecNode (AstNormalizesToStmt (ast1,ast2)) spec =
+        SpecNormalizesToStmt (checkAstTermToTerm spec ast1,
+                              checkAstTermToTerm spec ast2)
+
     | astNodeToSpecNode (AstUnifyStmtDecl (ast1,ast2)) spec =
         SpecUnifyStmt (checkAstTermToTerm spec ast1, checkAstTermToTerm spec ast2)
 
@@ -1332,6 +1339,15 @@ struct
             in
               ()
             end
+          end
+      | SpecNormalizesToStmt (tm1,tm2) =>
+          let
+            val rules = specGetRewriteRules spec
+            val tm = normalize rules tm1
+          in
+            if alphaEq tm tm2
+                then log "YES"
+                else log "NO"
           end
       | _ => ())
 
