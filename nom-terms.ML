@@ -83,7 +83,7 @@ struct
 
   fun fmt fm vals =
     String.concat $
-        fmt' (map Char.toString (String.explode fm), vals)
+        fmt' (map String.str (String.explode fm), vals)
 
   fun log msg = print msg
   fun flog fm vals = log (fmt fm vals)
@@ -325,7 +325,7 @@ struct
     | fa (VarTerm (p,n,Variable (_,_,pset))) = PNameSet (pAppPSet p (psetRemNames n pset))
     | fa (ConstTerm (p,n,Variable (_,_,pset))) = PNameSet (pAppPSet p (psetRemNames n pset))
     | fa (SymTerm (_,t)) = fa t
-    | fa (AbsTerm (n,t)) = fa t
+    | fa (AbsTerm (n,t)) = nameSetMinus (fa t) (FinNameSet [n])
     | fa (TupleTerm tms) =
         List.foldr
             (fn (ns,bns) => nameSetUnion ns bns)
@@ -1346,8 +1346,8 @@ struct
             val tm = normalize rules tm1
           in
             if alphaEq tm tm2
-                then log "YES"
-                else log "NO"
+                then log "YES\n"
+                else flog "NO: $ /= $\n" [termToString tm, termToString tm2]
           end
       | _ => ())
 
