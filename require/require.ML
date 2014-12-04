@@ -460,27 +460,6 @@ struct
   fun parseReq s =
     parseReq' s handle NoParseError => []
 
-  (*
-    <req-clause> ::= `require' <word> (`,' <word>)*
-
-    <mods> ::= <mod> <mod-list>
-    <mod-list> ::= <empty> | `,' <mod> <mod-list>
-  *)
-  (*
-  fun readUsesFromFile filename =
-  let
-    val fh    = TextIO.openIn filename
-    val fs    = ParserStreamIO.make fh
-    val files = parse (usesParser ()) fs
-    val ()    = TextIO.closeIn fh
-  in
-    case files of
-         LEFT (m as (Parser.Error msg,s)) => raise UsesError (errormsg m ^ " in file " ^ filename)
-       | LEFT (Parser.Fail msg,_)  => []
-       | RIGHT (fs,_)              => fs
-  end
-  *)
-
   fun readUsesFromFile filename =
   let
     val cont = slurp filename
