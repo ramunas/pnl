@@ -35,7 +35,6 @@ normalize subst([x]lam([y]var(x)), app(var(z), var(z)))
 name a : v
 name b : v
 name c : v
-# normalize app(lam([x]var(x)),`X)
 
 rewrite app(lam([a]lam([b]app(var(a), var(b)))), lam([c]var(c)))
 rewrite subst(([x]lam([b]app((var(x), var(b)))), lam([c]var(c))))
@@ -51,7 +50,7 @@ rewrite lam([y]var(y))
 # this is really a proposition. Should have a general means
 # checking propositions
 normalizes app(lam([a]lam([b]app(var(a), var(b)))), lam([c]var(c)))
-    to lam([y]var(y))
+    to lam([x]var(x))
 
 # normalizes to the above
 #normalize app(lam([a]lam([b]app(var(a), var(b)))), lam([c]var(c)))
@@ -62,6 +61,57 @@ normalizes app(lam([a]lam([b]app(var(a), var(b)))), lam([c]var(c)))
 
 # syntax \$n . $t = lam([$n]$t)
 # syntax $t1[$n3 := $t2] = subst([$n3]$t1, $t2)
+
+
+type nat
+fn zero : () => nat
+fn succ : nat => nat
+
+
+# Idea: it is possible to represent binding sequences
+# as sequences defined in the logic (e.g., bseq below)
+# This could have a special syntax and the rewriting
+# rules could be generated automatically. It requires
+# the possibility of rewriting in both directions though,
+# however it would allow for using unknowns for
+# matching sequences of binders in SOS rules
+type bsequence
+fn bcons : (v, bsequence) => bsequence
+fn bnil : () => bsequence
+fn bseq : (bsequence, lam) => lam
+fn blen : bsequence => nat
+
+name x : v
+name y : v
+var `X : bsequence
+var `Y : lam
+
+rw blen (bcons(x, `X)) ==> succ(blen(`X))
+rw blen (bnil()) ==> zero ()
+
+rw bseq (bcons(x,`X), `Y) ==> lam([x]bseq(`X, `Y))
+rw bseq (bnil(), `Y) ==> `Y
+
+normalize bseq(bcons(x, bcons(y, bnil())), var(x))
+normalize blen(bcons(x, bcons(y, bnil())))
+
+
+type bool
+fn true : () => bool
+fn false : () => bool
+fn lt : (nat,nat) => bool
+
+var `X : nat
+var `Y : nat
+# decidable less than
+rw lt (succ(`X), succ(`Y)) ==> lt (`X, `Y)
+rw lt (zero(), succ(`Y)) ==> true ()
+rw lt (succ(`X), zero()) ==> false ()
+rw lt (zero(), zero()) ==> false ()
+
+normalize lt(succ(succ(zero())), succ(zero()))
+normalize lt(succ(zero()), succ(succ(zero())))
+normalize lt(succ(succ(zero())), succ(succ(zero())))
 
 
 # vim:ft=pnl:
