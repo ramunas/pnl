@@ -212,8 +212,8 @@ struct
   fun getPSet (Variable (_,_,p)) = p
 
 
-  datatype predicate
-    = Predicate of string * sort
+  datatype predicate_symbol
+    = PredicateSym of string * sort
 
   datatype sym
     = Symbol of string * sort * base_sort
@@ -705,7 +705,7 @@ struct
     | AstNameDecl of string * name_pol * string
     | AstVarDecl of string * ((name_modifier * string) list)*ast_sort
     | AstSymDecl of string * ast_sort * ast_basesort
-    | AstPredDecl of string * ast_sort
+    | AstPredSymDecl of string * ast_sort
     | AstTermDecl of ast_term
     | AstRewriteDecl of ast_term * ast_term
     | AstSOSDecl of (ast_term * ast_term) list
@@ -801,7 +801,7 @@ struct
     identifier () >>= (fn id =>
     tok ":" >>
     delayed parseSort >>= (fn sort =>
-    return (AstPredDecl (id, sort))
+    return (AstPredSymDecl (id, sort))
     ))
 
   fun parseName () =
@@ -1043,7 +1043,7 @@ struct
     | SpecName of name
     | SpecVar of variable
     | SpecSym of sym
-    | SpecPred of predicate
+    | SpecPredSym of predicate_symbol
     | SpecTerm of term
     | SpecRewrite of rewrite_rule
     | SpecRewriteStmt of term
@@ -1251,8 +1251,8 @@ struct
                 checkAstSortToSort spec sort,
                 checkBaseSort spec baseSort)
 
-    | astNodeToSpecNode (AstPredDecl (name,sort)) spec =
-        SpecPred (Predicate (name, checkAstSortToSort spec sort))
+    | astNodeToSpecNode (AstPredSymDecl (name,sort)) spec =
+        SpecPredSym (PredicateSym (name, checkAstSortToSort spec sort))
 
     | astNodeToSpecNode (AstTermDecl t) spec =
     let

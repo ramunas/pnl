@@ -103,7 +103,7 @@ fn lt : (nat,nat) => bool
 
 var `X : nat
 var `Y : nat
-# decidable less than
+# a decidable less than
 rw lt (succ(`X), succ(`Y)) ==> lt (`X, `Y)
 rw lt (zero(), succ(`Y)) ==> true ()
 rw lt (succ(`X), zero()) ==> false ()
@@ -112,7 +112,6 @@ rw lt (zero(), zero()) ==> false ()
 normalize lt(succ(succ(zero())), succ(zero()))
 normalize lt(succ(zero()), succ(succ(zero())))
 normalize lt(succ(succ(zero())), succ(succ(zero())))
-
 
 pr trans : (lam,lam)
 
