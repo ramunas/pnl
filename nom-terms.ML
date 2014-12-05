@@ -212,6 +212,9 @@ struct
   fun getPSet (Variable (_,_,p)) = p
 
 
+  datatype predicate
+    = Predicate of string * sort
+
   datatype sym
     = Symbol of string * sort * base_sort
 
@@ -706,7 +709,7 @@ struct
     | AstTermDecl of ast_term
     | AstRewriteDecl of ast_term * ast_term
     | AstSOSDecl of (ast_term * ast_term) list
-
+    (* Statements *)
     | AstRewriteStmtDecl of ast_term
     | AstNormalizeStmtDecl of ast_term
     | AstUnifyStmtDecl of ast_term * ast_term
@@ -784,8 +787,6 @@ struct
         return (AstTupleSort (s::ss))))
     )
 
-  (* TODO: add mix-fix notation *)
-
   fun parseSymDecl () =
     tok "fn" >> ws1 () >>
     identifier () >>= (fn id =>
@@ -795,6 +796,13 @@ struct
     return (AstSymDecl (id, sort, bs))
     )))
 
+  fun parsePredicateDecl () =
+    tok "pr" >> ws1 () >>
+    identifier () >>= (fn id =>
+    tok ":" >>
+    delayed parseSort >>= (fn sort =>
+    return (AstPredDecl (id, sort))
+    ))
 
   fun parseName () =
     identifier ()
@@ -988,6 +996,8 @@ struct
         </choice/>
             parseSymDecl ()
         </choice/>
+            parsePredicateDecl ()
+        </choice/>
             parseNameDecl ()
         </choice/>
             parseVarDecl ()
@@ -1033,7 +1043,7 @@ struct
     | SpecName of name
     | SpecVar of variable
     | SpecSym of sym
-    (* | SpecPred of predicate *)
+    | SpecPred of predicate
     | SpecTerm of term
     | SpecRewrite of rewrite_rule
     | SpecRewriteStmt of term
@@ -1240,6 +1250,10 @@ struct
         Symbol (name,
                 checkAstSortToSort spec sort,
                 checkBaseSort spec baseSort)
+
+    | astNodeToSpecNode (AstPredDecl (name,sort)) spec =
+        SpecPred (Predicate (name, checkAstSortToSort spec sort))
+
     | astNodeToSpecNode (AstTermDecl t) spec =
     let
       val tm = checkAstTermToTerm spec t
@@ -1277,9 +1291,9 @@ struct
     | astNodeToSpecNode (AstUnifyStmtDecl (ast1,ast2)) spec =
         SpecUnifyStmt (checkAstTermToTerm spec ast1, checkAstTermToTerm spec ast2)
 
+
     | astNodeToSpecNode _ _ = SpecNameSort ""
     (*
-    | astNodeToSpecNode (AstPredDecl s) spec = error "AstPredDecl"
     | astNodeToSpecNode (AstSOSDecl s) spec = error "AstSOSDecl"
     *)
 

@@ -114,5 +114,17 @@ normalize lt(succ(zero()), succ(succ(zero())))
 normalize lt(succ(succ(zero())), succ(succ(zero())))
 
 
+pr trans : (lam,lam)
+
+# struct trans(`P, `PP) ~>
+#       trans(par(`P,`Q), par(`PP,`Q))
+# structexecute trans `P
+
+# i : (bool)
+
+# and not or
+# eps : (bool)
+
+
 # vim:ft=pnl:
 
